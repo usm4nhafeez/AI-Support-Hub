@@ -4,6 +4,7 @@ import com.aisupporthub.model.entity.Client;
 import com.aisupporthub.model.entity.Conversation;
 import com.aisupporthub.model.entity.Customer;
 import com.aisupporthub.model.entity.Message;
+import com.aisupporthub.exception.ResourceNotFoundException;
 import com.aisupporthub.model.enums.ConversationStatus;
 import com.aisupporthub.model.enums.MessageRole;
 import com.aisupporthub.repository.ConversationRepository;
@@ -32,7 +33,8 @@ public class ConversationService {
     public Conversation getOrCreate(Client client, String customerId, String conversationId) {
         if (conversationId != null && !conversationId.isBlank()) {
             return conversationRepository.findByConversationKeyAndClientId(conversationId, client.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Conversation not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                    "Conversation '" + conversationId + "' was not found for this client"));
         }
 
         Customer customer = customerRepository.findByClientIdAndExternalCustomerId(client.getId(), customerId)

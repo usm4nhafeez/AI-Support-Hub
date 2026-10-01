@@ -1,6 +1,7 @@
 package com.aisupporthub.service;
 
 import com.aisupporthub.model.entity.Agent;
+import com.aisupporthub.exception.InvalidCredentialsException;
 import com.aisupporthub.repository.AgentRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,9 +18,9 @@ public class AgentService {
 
     public Agent authenticate(String username, String password) {
         Agent agent = repository.findByUsername(username)
-            .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
+            .orElseThrow(InvalidCredentialsException::new);
         if (!agent.isActive() || !passwordEncoder.matches(password, agent.getPasswordHash())) {
-            throw new IllegalArgumentException("Invalid credentials");
+            throw new InvalidCredentialsException();
         }
         return agent;
     }

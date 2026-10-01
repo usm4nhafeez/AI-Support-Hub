@@ -367,6 +367,33 @@ Expected:
 403 Forbidden
 ```
 
+### Duplicate client key
+
+Send `POST /api/v1/clients` with a `clientKey` that already exists:
+
+```json
+{
+  "clientKey": "bookvault",
+  "name": "BookVault Duplicate",
+  "apiKey": "another-api-key"
+}
+```
+
+Expected: HTTP `409 Conflict`.
+
+Example response:
+
+```json
+{
+  "timestamp": "2026-10-01T12:00:00Z",
+  "status": 409,
+  "error": "Conflict",
+  "code": "RESOURCE_CONFLICT",
+  "message": "Client key 'bookvault' already exists. Use a unique clientKey.",
+  "path": "/api/v1/clients"
+}
+```
+
 ### Database schema mismatch
 
 If the application reaches the chat controller but the response fails with an
