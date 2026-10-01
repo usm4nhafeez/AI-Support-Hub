@@ -1,0 +1,502 @@
+# Oracle SQL Setup Help — AI Support Hub
+
+This guide explains how to create the Oracle application user, grant permissions, connect with SQL*Plus, and execute the database SQL statements for AI Support Hub.
+
+> **Important:** Run administrative commands as `SYSTEM` (or another authorized DBA account) in the `FREEPDB1` pluggable database. Run application table scripts as `AIUSER`. Do not run application DDL as `SYSTEM`.
+>
+> This guide assumes the Oracle service is `FREEPDB1` and the application connects with:
+>
+> ```properties
+> spring.datasource.url=jdbc:oracle:thin:@//localhost:1521/FREEPDB1
+> spring.datasource.username=${ORACLE_USERNAME}
+> spring.datasource.password=${ORACLE_PASSWORD}
+> ```
+
+## 1. Understand Oracle users and tablespaces
+
+- **Database / CDB:** The Oracle database container.
+- **PDB (`FREEPDB1`):** The pluggable database your Spring Boot application connects to.
+- **User/schema (`AIUSER`):** Owns the application's tables, indexes, and other schema objects.
+- **Tablespace (`USERS`):** Logical storage area where the user's tables and indexes can be stored.
+
+For this project, create or configure `AIUSER` inside `FREEPDB1`, not in `CDB$ROOT`.
+
+## 2. Connect to SQL*Plus as SYSTEM
+
+Open a terminal and connect to the PDB service:
+
+```text
+sqlplus system@//localhost:1521/FREEPDB1
+```
+
+Enter the SYSTEM password when prompted. Avoid placing passwords directly in commands or committing them to source control.
+
+If you are already at the `SQL>` prompt, check the current container:
+
+```sql
+SHOW CON_NAME;
+```
+
+If it reports `CDB$ROOT`, switch to the PDB:
+
+```sql
+ALTER SESSION SET CONTAINER = FREEPDB1;
+SHOW CON_NAME;
+```
+
+Continue only when the current container is `FREEPDB1`.
+
+## 3. Create or configure the AIUSER account
+
+Check whether the user already exists:
+
+```sql
+SELECT username, account_status, default_tablespace
+FROM dba_users
+WHERE username = 'AIUSER';
+```
+
+### Option A — Create AIUSER if it does not exist
+
+Replace `Choose_A_Strong_Password` with a strong password of your own. Do not use this example text as your real password.
+
+```sql
+CREATE USER AIUSER
+  IDENTIFIED BY "Choose_A_Strong_Password"
+  DEFAULT TABLESPACE USERS
+  TEMPORARY TABLESPACE TEMP
+  QUOTA UNLIMITED ON USERS;
+```
+
+### Option B — If AIUSER already exists
+
+Set a new password and ensure the user has a tablespace quota:
+
+```sql
+ALTER USER AIUSER
+  IDENTIFIED BY "Choose_A_Strong_Password"
+  DEFAULT TABLESPACE USERS
+  TEMPORARY TABLESPACE TEMP
+  QUOTA UNLIMITED ON USERS;
+```
+
+If the account is locked, unlock it:
+
+```sql
+ALTER USER AIUSER ACCOUNT UNLOCK;
+```
+
+## 4. Grant required permissions
+
+Still connected as `SYSTEM` in `FREEPDB1`, run:
+
+```sql
+GRANT CREATE SESSION TO AIUSER;
+GRANT CREATE TABLE TO AIUSER;
+GRANT CREATE SEQUENCE TO AIUSER;
+GRANT CREATE VIEW TO AIUSER;
+GRANT CREATE PROCEDURE TO AIUSER;
+```
+
+These are schema-object privileges used by the application. The `UNLIMITED TABLESPACE` system privilege is not necessary when the user has an appropriate quota on the `USERS` tablespace.
+
+Verify the grants:
+
+```sql
+SELECT privilege
+FROM dba_sys_privs
+WHERE grantee = 'AIUSER'
+ORDER BY privilege;
+```
+
+Verify the tablespace quota:
+
+```sql
+SELECT tablespace_name, bytes, max_bytes
+FROM dba_ts_quotas
+WHERE username = 'AIUSER';
+```
+
+## 5. Connect as AIUSER
+
+From SQL*Plus, connect to the application schema:
+
+```sql
+CONNECT AIUSER/{Choose_A_Strong_Password}@//localhost:1521/FREEPDB1"
+```
+
+Enter the AIUSER password when prompted.
+
+Verify the current user and PDB:
+
+```sql
+SHOW USER;
+SHOW CON_NAME;
+```
+
+Expected:
+- User: `AIUSER`
+- Container: `FREEPDB1`
+
+You can also verify with SQL:
+
+```sql
+SELECT USER AS current_user FROM dual;
+
+SELECT SYS_CONTEXT('USERENV', 'CON_NAME') AS current_container
+FROM dual;
+```
+
+## 6. Create the project tables
+
+**First inspect the current schema.** Do not blindly rerun `CREATE TABLE` statements against a schema that already contains tables.
+
+```sql
+SELECT table_name
+FROM user_tables
+ORDER BY table_name;
+```
+
+Check the columns for a particular table:
+
+```sql
+SELECT column_name, data_type, data_length, nullable
+FROM user_tab_columns
+WHERE table_name = 'SUPPORT_CLIENTS'
+ORDER BY column_id;
+```
+
+### Important note about the DDL
+
+The table definitions below are a **starter schema** based on the AI Support Hub features discussed so far. The `SUPPORT_CLIENTS` table is confirmed by the application error log, but the complete Java entity mappings have not been verified here. Before using this as a permanent schema or Flyway migration, compare every table, column, ID type, constraint, and relationship with the actual Java entities and repository queries.
+
+If a table already exists, do not drop it merely to make this script run. Inspect and migrate it safely.
+
+### 6.1 SUPPORT_CLIENTS
+
+```sql
+CREATE TABLE SUPPORT_CLIENTS (
+    ID              NUMBER GENERATED BY DEFAULT AS IDENTITY,
+    CLIENT_KEY      VARCHAR2(100) NOT NULL,
+    NAME            VARCHAR2(200) NOT NULL,
+    API_KEY_HASH    VARCHAR2(255) NOT NULL,
+    ACTIVE          NUMBER(1) DEFAULT 1 NOT NULL,
+    CREATED_AT      TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    UPDATED_AT      TIMESTAMP,
+    CONSTRAINT PK_SUPPORT_CLIENTS PRIMARY KEY (ID),
+    CONSTRAINT UK_SUPPORT_CLIENTS_KEY UNIQUE (CLIENT_KEY),
+    CONSTRAINT CK_SUPPORT_CLIENTS_ACTIVE CHECK (ACTIVE IN (0, 1))
+);
+```
+
+### 6.2 SUPPORT_AGENTS
+
+```sql
+CREATE TABLE SUPPORT_AGENTS (
+    ID              NUMBER GENERATED BY DEFAULT AS IDENTITY,
+    CLIENT_ID       NUMBER NOT NULL,
+    USERNAME        VARCHAR2(100) NOT NULL,
+    PASSWORD_HASH   VARCHAR2(255) NOT NULL,
+    ROLE            VARCHAR2(50) NOT NULL,
+    ACTIVE          NUMBER(1) DEFAULT 1 NOT NULL,
+    CREATED_AT      TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    UPDATED_AT      TIMESTAMP,
+    CONSTRAINT PK_SUPPORT_AGENTS PRIMARY KEY (ID),
+    CONSTRAINT FK_AGENTS_CLIENT FOREIGN KEY (CLIENT_ID)
+        REFERENCES SUPPORT_CLIENTS(ID),
+    CONSTRAINT UK_AGENT_CLIENT_USERNAME UNIQUE (CLIENT_ID, USERNAME),
+    CONSTRAINT CK_AGENTS_ACTIVE CHECK (ACTIVE IN (0, 1))
+);
+```
+
+### 6.3 SUPPORT_CONVERSATIONS
+
+```sql
+CREATE TABLE SUPPORT_CONVERSATIONS (
+    ID              NUMBER GENERATED BY DEFAULT AS IDENTITY,
+    CLIENT_ID       NUMBER NOT NULL,
+    CUSTOMER_ID     VARCHAR2(200) NOT NULL,
+    CONVERSATION_ID VARCHAR2(200),
+    STATUS          VARCHAR2(30) DEFAULT 'OPEN' NOT NULL,
+    CREATED_AT      TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    UPDATED_AT      TIMESTAMP,
+    CONSTRAINT PK_SUPPORT_CONVERSATIONS PRIMARY KEY (ID),
+    CONSTRAINT FK_CONVERSATIONS_CLIENT FOREIGN KEY (CLIENT_ID)
+        REFERENCES SUPPORT_CLIENTS(ID),
+    CONSTRAINT UK_CLIENT_CONVERSATION UNIQUE (CLIENT_ID, CONVERSATION_ID)
+);
+```
+
+### 6.4 SUPPORT_MESSAGES
+
+```sql
+CREATE TABLE SUPPORT_MESSAGES (
+    ID              NUMBER GENERATED BY DEFAULT AS IDENTITY,
+    CONVERSATION_ID NUMBER NOT NULL,
+    SENDER_TYPE     VARCHAR2(30) NOT NULL,
+    CONTENT         CLOB NOT NULL,
+    CREATED_AT      TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT PK_SUPPORT_MESSAGES PRIMARY KEY (ID),
+    CONSTRAINT FK_MESSAGES_CONVERSATION FOREIGN KEY (CONVERSATION_ID)
+        REFERENCES SUPPORT_CONVERSATIONS(ID)
+);
+```
+
+If `SUPPORT_MESSAGES` already existed before the current JPA mapping, inspect its columns:
+
+```sql
+SELECT column_name, data_type, nullable
+FROM user_tab_columns
+WHERE table_name = 'SUPPORT_MESSAGES'
+ORDER BY column_id;
+```
+
+The application maps `Message.role` to `SENDER_TYPE`. If the table contains an old
+non-null `ROLE` column from an earlier schema version, remove that obsolete column
+after confirming it is not used by another application:
+
+```sql
+ALTER TABLE SUPPORT_MESSAGES DROP COLUMN ROLE;
+```
+
+Do not run this statement against a fresh schema; the canonical definition above
+already has the correct `SENDER_TYPE` column.
+
+### 6.5 ACTION_APPROVALS
+
+```sql
+CREATE TABLE ACTION_APPROVALS (
+    ID              NUMBER GENERATED BY DEFAULT AS IDENTITY,
+    CLIENT_ID       NUMBER NOT NULL,
+    CONVERSATION_ID NUMBER,
+    ACTION_TYPE     VARCHAR2(100) NOT NULL,
+    ACTION_PAYLOAD  CLOB,
+    STATUS          VARCHAR2(30) DEFAULT 'PENDING' NOT NULL,
+    APPROVED_BY     VARCHAR2(200),
+    CREATED_AT      TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    UPDATED_AT      TIMESTAMP,
+    CONSTRAINT PK_ACTION_APPROVALS PRIMARY KEY (ID),
+    CONSTRAINT FK_APPROVALS_CLIENT FOREIGN KEY (CLIENT_ID)
+        REFERENCES SUPPORT_CLIENTS(ID),
+    CONSTRAINT FK_APPROVALS_CONVERSATION FOREIGN KEY (CONVERSATION_ID)
+        REFERENCES SUPPORT_CONVERSATIONS(ID)
+);
+```
+
+### 6.6 KNOWLEDGE_DOCUMENTS
+
+```sql
+CREATE TABLE KNOWLEDGE_DOCUMENTS (
+    ID              NUMBER GENERATED BY DEFAULT AS IDENTITY,
+    CLIENT_ID       NUMBER NOT NULL,
+    DOCUMENT_NAME   VARCHAR2(500) NOT NULL,
+    SOURCE          VARCHAR2(1000),
+    CONTENT_TYPE    VARCHAR2(100),
+    STATUS          VARCHAR2(30) DEFAULT 'PENDING' NOT NULL,
+    CREATED_AT      TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    UPDATED_AT      TIMESTAMP,
+    CONSTRAINT PK_KNOWLEDGE_DOCUMENTS PRIMARY KEY (ID),
+    CONSTRAINT FK_DOCUMENTS_CLIENT FOREIGN KEY (CLIENT_ID)
+        REFERENCES SUPPORT_CLIENTS(ID)
+);
+```
+
+### 6.7 AUDIT_LOGS
+
+```sql
+CREATE TABLE AUDIT_LOGS (
+    ID              NUMBER GENERATED BY DEFAULT AS IDENTITY,
+    CLIENT_ID       NUMBER,
+    ACTOR           VARCHAR2(200),
+    ACTION          VARCHAR2(200) NOT NULL,
+    DETAILS         CLOB,
+    CREATED_AT      TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT PK_AUDIT_LOGS PRIMARY KEY (ID),
+    CONSTRAINT FK_AUDIT_CLIENT FOREIGN KEY (CLIENT_ID)
+        REFERENCES SUPPORT_CLIENTS(ID)
+);
+```
+
+## 7. Create indexes
+
+Run these after the corresponding tables have been created:
+
+```sql
+CREATE INDEX IDX_AGENTS_CLIENT
+    ON SUPPORT_AGENTS(CLIENT_ID);
+
+CREATE INDEX IDX_CONVERSATIONS_CLIENT
+    ON SUPPORT_CONVERSATIONS(CLIENT_ID);
+
+CREATE INDEX IDX_MESSAGES_CONVERSATION
+    ON SUPPORT_MESSAGES(CONVERSATION_ID);
+
+CREATE INDEX IDX_APPROVALS_CLIENT_STATUS
+    ON ACTION_APPROVALS(CLIENT_ID, STATUS);
+
+CREATE INDEX IDX_DOCUMENTS_CLIENT_STATUS
+    ON KNOWLEDGE_DOCUMENTS(CLIENT_ID, STATUS);
+
+CREATE INDEX IDX_AUDIT_CLIENT_CREATED
+    ON AUDIT_LOGS(CLIENT_ID, CREATED_AT);
+```
+
+Oracle automatically creates indexes for primary-key and unique constraints in the usual configuration. The indexes above are additional lookup indexes.
+
+## 8. Verify schema creation
+
+Run as `AIUSER`:
+
+```sql
+SELECT table_name
+FROM user_tables
+ORDER BY table_name;
+```
+
+Check constraints:
+
+```sql
+SELECT table_name, constraint_name, constraint_type, status
+FROM user_constraints
+ORDER BY table_name, constraint_name;
+```
+
+Check indexes:
+
+```sql
+SELECT table_name, index_name, uniqueness
+FROM user_indexes
+ORDER BY table_name, index_name;
+```
+
+Check whether `SUPPORT_CLIENTS` exists:
+
+```sql
+SELECT COUNT(*) AS table_count
+FROM user_tables
+WHERE table_name = 'SUPPORT_CLIENTS';
+```
+
+A result of `1` means the table exists in the current schema.
+
+## 9. Configure Spring Boot environment variables
+
+In Windows PowerShell, set the variables for the current terminal session:
+
+```powershell
+$env:ORACLE_USERNAME = "AIUSER"
+$env:ORACLE_PASSWORD = "YourActualAIUserPassword"
+```
+
+Then run the application from the project root:
+
+```powershell
+mvn spring-boot:run
+```
+
+Your `application.properties` should continue to use environment-variable placeholders:
+
+```properties
+spring.datasource.url=jdbc:oracle:thin:@//localhost:1521/FREEPDB1
+spring.datasource.username=${ORACLE_USERNAME}
+spring.datasource.password=${ORACLE_PASSWORD}
+```
+
+For IntelliJ run configurations, set the same environment variables in **Run → Edit Configurations → Environment variables**. IntelliJ does not need to create the database tables; SQL*Plus or a database migration tool can do that.
+
+## 10. Spring AI vector-store schema
+
+The Oracle Vector Store is initialized separately by Spring AI. Keep the vector-store properties in `application.properties`:
+
+```properties
+spring.ai.vectorstore.oracle.initialize-schema=true
+spring.ai.vectorstore.oracle.dimensions=3072
+spring.ai.vectorstore.oracle.distance-type=COSINE
+spring.ai.vectorstore.oracle.index-type=IVF
+
+# Avoid deleting existing vector data during normal restarts
+spring.ai.vectorstore.oracle.remove-existing-vector-store-table=false
+```
+
+Do not manually create the Spring AI vector-store table unless you are following the schema for the exact Spring AI version in your project.
+
+The application uses top-k vector retrieval and does not configure a similarity
+threshold. Oracle requires vector normalization before threshold filtering can be
+used. If a similarity threshold is added later, also enable:
+
+```properties
+spring.ai.vectorstore.oracle.forced-normalization=true
+```
+
+Changing vector dimensions or normalization settings may require rebuilding the
+vector-store table and re-ingesting the knowledge documents. Do not enable
+`remove-existing-vector-store-table` during normal development unless deleting
+existing embeddings is intentional.
+
+## 11. Recommended schema management going forward
+
+For local development, Hibernate can update discovered JPA entities:
+
+```properties
+spring.jpa.hibernate.ddl-auto=update
+```
+
+For a controlled production schema, use Flyway migrations and validate entity mappings:
+
+```properties
+spring.jpa.hibernate.ddl-auto=validate
+spring.flyway.enabled=true
+spring.flyway.locations=classpath:db/migration
+```
+
+Place versioned migration files in `src/main/resources/db/migration`, for example:
+
+```text
+src/main/resources/db/migration/
+└── V1__create_core_tables.sql
+```
+
+Do not use both a manually executed copy of the same DDL and a Flyway migration against an already populated schema without planning a baseline. Flyway tracks migrations in its schema history table.
+
+## Troubleshooting
+
+### ORA-00942: table or view does not exist
+
+1. Check the application username:
+   ```sql
+   SELECT USER FROM dual;
+   ```
+2. Check the current PDB:
+   ```sql
+   SELECT SYS_CONTEXT('USERENV', 'CON_NAME') FROM dual;
+   ```
+3. Check whether the table belongs to the current schema:
+   ```sql
+   SELECT table_name FROM user_tables
+   WHERE table_name = 'SUPPORT_CLIENTS';
+   ```
+4. Confirm the application uses `AIUSER` and the `FREEPDB1` service.
+
+### ORA-01017: invalid username/password
+
+Check the `AIUSER` password and the `ORACLE_USERNAME` / `ORACLE_PASSWORD` values used by the Spring Boot process.
+
+### ORA-01950: no privileges on tablespace
+
+As `SYSTEM` in `FREEPDB1`, grant a quota:
+
+```sql
+ALTER USER AIUSER QUOTA UNLIMITED ON USERS;
+```
+
+### ORA-01031: insufficient privileges
+
+As an authorized DBA in `FREEPDB1`, grant the missing schema privilege, for example:
+
+```sql
+GRANT CREATE TABLE TO AIUSER;
+```
+
+---
+
+**Before treating the proposed table DDL as final:** compare it against the project's actual `@Entity` classes. Hibernate mappings are the source of truth for table and column names, ID generation, nullability, and relationships. This document deliberately labels the relational DDL as a starter schema because those complete mappings were not supplied when it was drafted.

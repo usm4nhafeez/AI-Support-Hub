@@ -1,0 +1,23 @@
+AI Support Hub Demo Knowledge
+
+BookVault is a library application integrated with AI Support Hub for demonstration purposes.
+
+BookVault users can search for books by title, author, ISBN, or genre.
+
+A customer can ask support about:
+- How to search for books.
+- Whether a book is available.
+- How authentication works.
+- How to contact a human support agent.
+
+Return policy:
+Digital or library content access issues should be handled according to the client application's configured support policy. AI Support Hub should not invent a policy that is not present in the client's knowledge base.
+
+Security:
+Customers must not provide passwords, API keys, or other secrets in support messages.
+
+Escalation:
+The AI should offer human escalation when it cannot answer from the available knowledge or when a sensitive business action requires approval.
+
+AI Support Hub:
+AI Support Hub is a reusable REST-based customer support service. A client application does not need Spring AI. It only needs to call the Support Hub REST API.

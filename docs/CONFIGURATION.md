@@ -33,7 +33,8 @@ http://localhost:8000
 
 ```properties
 spring.jpa.hibernate.ddl-auto=update
-spring.jpa.show-sql=true
+#spring.jpa.show-sql=false
+#spring.jpa.properties.hibernate.format_sql=false
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.OracleDialect
 ```
 
@@ -45,9 +46,20 @@ Uses Hibernate's `update` mode to automatically update database tables based on 
 
 Enables SQL logging to help inspect database operations during development.
 
+### `spring.jpa.properties.hibernate.format_sql`
+
+Formats logged SQL across multiple lines so it is easier to read while debugging.
+
 ### `spring.jpa.properties.hibernate.dialect`
 
 Configures Hibernate to generate SQL appropriate for Oracle Database.
+
+### Recommended usage for these JPA properties
+
+- `spring.jpa.hibernate.ddl-auto=update`: convenient in development because schema changes are auto-applied, but avoid in production where controlled migrations are safer.
+- `spring.jpa.show-sql=false`: SQL logging is disabled by default; enable it temporarily when debugging.
+- `spring.jpa.properties.hibernate.format_sql=false`: SQL formatting is disabled by default and can be enabled with SQL logging.
+- `spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.OracleDialect`: required when using Oracle so Hibernate generates Oracle-compatible SQL.
 
 ---
 
@@ -155,7 +167,7 @@ These embeddings are later stored in the Oracle vector store and compared agains
 
 ```properties
 spring.ai.vectorstore.oracle.initialize-schema=true
-spring.ai.vectorstore.oracle.remove-existing-vector-store-table=true
+spring.ai.vectorstore.oracle.remove-existing-vector-store-table=false
 spring.ai.vectorstore.oracle.dimensions=3072
 spring.ai.vectorstore.oracle.distance-type=COSINE
 spring.ai.vectorstore.oracle.index-type=IVF
@@ -172,12 +184,13 @@ allows Spring AI to initialize the required Oracle vector-store schema.
 ### Existing Vector Store Table
 
 ```text
-spring.ai.vectorstore.oracle.remove-existing-vector-store-table=true
+spring.ai.vectorstore.oracle.remove-existing-vector-store-table=false
 ```
 
-allows the existing vector-store table to be removed and recreated during initialization.
+preserves the existing vector-store table and embeddings during normal startup.
 
-**Development warning:** This setting can remove previously stored vector data. It should be disabled or handled carefully when deploying to a persistent environment.
+Set this to `true` only when intentionally rebuilding the vector-store table.
+That operation deletes existing vector data.
 
 ### Vector Dimensions
 
@@ -196,6 +209,7 @@ spring.ai.vectorstore.oracle.distance-type=COSINE
 ```
 
 uses cosine similarity to measure the similarity between vectors.
+COSINE (means cosine distance).
 
 ### Index Type
 
@@ -204,6 +218,20 @@ spring.ai.vectorstore.oracle.index-type=IVF
 ```
 
 configures Oracle's IVF vector index for vector similarity search.
+IVF - Inverted File Index.
+
+### Similarity threshold and normalization
+
+The application currently uses top-k retrieval without a similarity threshold.
+Oracle requires normalized vectors before threshold filtering can be used. If
+threshold filtering is enabled later, configure:
+
+```properties
+spring.ai.vectorstore.oracle.forced-normalization=true
+```
+
+Changing vector dimensions or normalization settings may require rebuilding the
+vector-store table and re-ingesting knowledge documents.
 
 ---
 
@@ -227,6 +255,13 @@ Before running the application, configure the following environment variables:
 GEMINI_API_KEY
 ORACLE_USERNAME
 ORACLE_PASSWORD
+JWT_SECRET
+JWT_EXPIRATION_MS
+DEMO_CLIENT_KEY
+DEMO_API_KEY
+DEMO_AGENT_USERNAME
+DEMO_AGENT_PASSWORD
+BOOKVAULT_URL
 ```
 
 Example PowerShell configuration:
