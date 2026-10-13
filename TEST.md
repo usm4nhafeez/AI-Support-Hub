@@ -10,13 +10,20 @@ Create a Postman environment with these variables:
 
 ```text
 baseUrl = http://localhost:8000
-clientKey = bookvault
-apiKey = change-me
+clientKey = demo-client
+apiKey = <value configured in DEMO_API_KEY>
 agentUsername = admin
 agentPassword = <value configured in IntelliJ>
 agentToken =
 conversationId =
+clientId =
 ```
+
+Demo seeding is conditional: the demo client and agent are only created when
+`DEMO_API_KEY` and `DEMO_AGENT_PASSWORD` are set to real values at startup
+(placeholders like `change-me` are skipped with a warning). If they were not
+seeded, register a client through the dashboard (Clients screen) or step 3 and
+use the generated keys for `clientKey`/`apiKey`.
 
 The customer chat endpoint is:
 
@@ -44,9 +51,15 @@ No headers are required.
 }
 ```
 
+Note: the health endpoint can report `503` when a downstream component (for
+example the vector store check) is degraded even though the API itself works.
+If chat requests succeed, treat the app as healthy.
+
 ## 2. Login as an agent
 
-The demo agent is created automatically when the application starts.
+The demo agent is created automatically when the application starts, provided
+`DEMO_AGENT_PASSWORD` was set to a real value (see Base URL note above). Login
+is rate-limited to 10 requests per minute per IP.
 
 ### Request
 
@@ -83,7 +96,7 @@ If login returns `400` or `401`, verify the `support.demo.agent-password` value 
 
 ## 3. Create another client
 
-This endpoint requires an agent JWT. This step is optional because the application automatically creates the default `bookvault` client during startup.
+This endpoint requires an agent JWT. This step is optional because the application automatically creates the configured demo client during startup.
 
 ### Request
 
@@ -207,7 +220,6 @@ API-key filter
     -> save customer message
     -> search client-specific knowledge
     -> call Gemini
-    -> optionally call BookVault tools
     -> save AI response
     -> write audit event
     -> return ChatResponse
@@ -238,14 +250,13 @@ The `conversationId` must belong to the same client. Otherwise the service retur
 
 ## 7. List conversations as an agent
 
-This endpoint requires an agent JWT and `X-Client-Key`.
+This endpoint requires an agent JWT. The tenant is taken from the signed token.
 
 ### Request
 
 ```http
 GET {{baseUrl}}/api/v1/agent/conversations
 Authorization: Bearer {{agentToken}}
-X-Client-Key: {{clientKey}}
 ```
 
 ### Expected response
@@ -262,25 +273,116 @@ X-Client-Key: {{clientKey}}
 ]
 ```
 
+## 8. List clients as an agent
+
+### Request
+
+```http
+GET {{baseUrl}}/api/v1/clients
+Authorization: Bearer {{agentToken}}
+```
+
+### Expected response
+
+A JSON array of `ClientResponse` objects (`id`, `clientKey`, `name`, `active`,
+timestamps). No API key or hash is ever included. Save a `clientId` from the
+response for step 9.
+
+## 9. Train a project as an agent (no client API key)
+
+The dashboard Knowledge screen uses these routes to train any project with only
+a JWT.
+
+### List documents
+
+```http
+GET {{baseUrl}}/api/v1/clients/{{clientId}}/knowledge
+Authorization: Bearer {{agentToken}}
+```
+
+### Ingest text
+
+```http
+POST {{baseUrl}}/api/v1/clients/{{clientId}}/knowledge
+Authorization: Bearer {{agentToken}}
+Content-Type: application/json
+```
+
+Body (same shape as step 4):
+
+```json
+{ "name": "Shipping FAQ", "category": "faq", "version": "1.0", "content": "Shipping takes 2-4 business days." }
+```
+
+### Upload a file
+
+```http
+POST {{baseUrl}}/api/v1/clients/{{clientId}}/knowledge/file
+Authorization: Bearer {{agentToken}}
+Content-Type: multipart/form-data
+```
+
+Form fields: `file` (required, `.pdf`/`.md`/`.markdown`), plus optional `name`,
+`category`, `version`. Other extensions return `400`.
+
+The same client-API-key variants exist for both ingestion styles:
+
+```http
+POST {{baseUrl}}/api/v1/knowledge/file
+X-Client-Key: {{clientKey}}
+X-API-Key: {{apiKey}}
+```
+
+## 10. Dashboard UI
+
+Open `http://localhost:8000` in a browser.
+
+1. Log in with the agent credentials.
+2. Themes: switch between **Console**, **Daylight** and **Blueprint** — on the
+   sign-in screen and in the top bar. The choice persists across reloads
+   (`ash.theme` in `localStorage`), recolours the Three.js routing core, and
+   updates the `theme-color` meta tag.
+3. Routing core: the constellation animates behind the sign-in card, then stops
+   there and starts again in the sidebar once signed in, and pulses when an AI
+   reply lands. With `prefers-reduced-motion` it renders one still frame;
+   without WebGL the flat CSS backdrop stands in and nothing else changes.
+4. Deep links: open `/#knowledge`, or click a view and reload — the same screen
+   comes back.
+5. Knowledge screen: pick a project from the dropdown and ingest text — the new
+   document chip list refreshes.
+6. Clients screen: onboard a project, copy the generated key pair (API key shown
+   once), rotate a key, add and remove an agent. In the Support agents list,
+   `admin`-role rows show a **Protected** note instead of a Remove button (the
+   dashboard never offers a removal the API would refuse with `409`), and your own
+   row shows a disabled **Signed in**.
+7. Chat Playground: chat with the new keys.
+8. API Guide: verify the curl examples and "Copy with my credentials".
+9. About: the developer card lists GitHub, LinkedIn and email; the name, bio and
+   photo come from the public GitHub profile when it is reachable and fall back
+   to baked values offline. That request carries no hub credentials.
+
 ## Authentication matrix
 
 | Endpoint | Authentication |
 |---|---|
 | `GET /actuator/health` | Public |
 | `GET /actuator/info` | Public |
-| `POST /api/v1/agent/auth/login` | Public |
-| `POST /api/v1/support/chat` | `X-Client-Key` + `X-API-Key` |
+| `GET /` and static assets | Public (dashboard SPA) |
+| `POST /api/v1/agent/auth/login` | Public (rate-limited) |
+| `POST /api/v1/support/chat` | `X-Client-Key` + `X-API-Key` (rate-limited) |
 | `POST /api/v1/knowledge` | `X-Client-Key` + `X-API-Key` |
-| `GET /api/v1/agent/conversations` | `Authorization: Bearer ...` + `X-Client-Key` |
-| `POST /api/v1/clients` | `Authorization: Bearer ...` |
+| `POST /api/v1/knowledge/file` | `X-Client-Key` + `X-API-Key` |
+| `GET /api/v1/agent/conversations` | `Authorization: Bearer ...` |
+| `GET`/`POST /api/v1/clients` | `Authorization: Bearer ...` |
+| `GET`/`POST /api/v1/clients/{id}/knowledge[/file]` | `Authorization: Bearer ...` |
 
 ## Important Postman details
 
 Customer requests require these exact headers:
 
 ```http
-X-Client-Key: bookvault
-X-API-Key: change-me
+X-Client-Key: {{clientKey}}
+X-API-Key: {{apiKey}}
 Content-Type: application/json
 ```
 
@@ -290,12 +392,6 @@ Agent requests require:
 
 ```http
 Authorization: Bearer {{agentToken}}
-```
-
-The agent conversation endpoint also requires:
-
-```http
-X-Client-Key: {{clientKey}}
 ```
 
 The generated Spring Security password shown in the startup log is unrelated to the application's agent login. Use the configured demo agent username and password.
@@ -329,6 +425,31 @@ Use:
 ```http
 POST {{baseUrl}}/api/v1/support/chat
 ```
+
+### Unknown route (404)
+
+With a valid agent JWT, request a path that does not exist:
+
+```http
+GET {{baseUrl}}/api/v1/does-not-exist
+Authorization: Bearer {{agentToken}}
+```
+
+Expected: HTTP `404` with `{"code":"NOT_FOUND","message":"No endpoint or resource matches this path.", ...}`.
+Unauthenticated requests to unknown API routes return `403` (the security layer
+does not disclose which routes exist).
+
+### Rate limit (429)
+
+Call `POST /api/v1/agent/auth/login` 11 times rapidly (wrong password is fine):
+
+```text
+Requests 1-10: 401 INVALID_CREDENTIALS
+Request 11:    429 with a Retry-After header
+```
+
+The `429` body has `"code":"RATE_LIMITED"`. Chat is limited similarly at
+30 requests/minute per `X-Client-Key`.
 
 ### Invalid request body
 
@@ -373,8 +494,8 @@ Send `POST /api/v1/clients` with a `clientKey` that already exists:
 
 ```json
 {
-  "clientKey": "bookvault",
-  "name": "BookVault Duplicate",
+  "clientKey": "demo-client",
+  "name": "Duplicate Demo Client",
   "apiKey": "another-api-key"
 }
 ```
@@ -389,7 +510,7 @@ Example response:
   "status": 409,
   "error": "Conflict",
   "code": "RESOURCE_CONFLICT",
-  "message": "Client key 'bookvault' already exists. Use a unique clientKey.",
+  "message": "Client key 'demo-client' already exists. Use a unique clientKey.",
   "path": "/api/v1/clients"
 }
 ```
@@ -413,6 +534,10 @@ application before retrying.
 5. Start customer chat
 6. Continue customer chat
 7. List conversations as agent
+8. List clients as agent
+9. Train a project as an agent (list/ingest/file)
+10. Dashboard UI walkthrough
+11. Error tests: 400 / 403 / 404 / 409 / 429
 ```
 
 ## Endpoint summary
@@ -421,8 +546,14 @@ application before retrying.
 |---|---|---|
 | `GET` | `/actuator/health` | Check application health |
 | `GET` | `/actuator/info` | Read application information |
+| `GET` | `/` | Agent dashboard (SPA) |
 | `POST` | `/api/v1/agent/auth/login` | Authenticate an agent and receive a JWT |
+| `GET` | `/api/v1/clients` | List clients |
 | `POST` | `/api/v1/clients` | Create a client |
 | `POST` | `/api/v1/knowledge` | Ingest client knowledge and embeddings |
+| `POST` | `/api/v1/knowledge/file` | Ingest a PDF/Markdown document |
+| `GET` | `/api/v1/clients/{id}/knowledge` | List a project's documents (agent) |
+| `POST` | `/api/v1/clients/{id}/knowledge` | Ingest text knowledge for a project (agent) |
+| `POST` | `/api/v1/clients/{id}/knowledge/file` | Upload PDF/Markdown for a project (agent) |
 | `POST` | `/api/v1/support/chat` | Start or continue customer chat |
 | `GET` | `/api/v1/agent/conversations` | List conversations for a client |

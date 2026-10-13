@@ -172,6 +172,39 @@ Application dependencies therefore do not need individual Spring AI version decl
 
 ---
 
+## 8. Frontend assets (no build step)
+
+The agent dashboard is a plain SPA served from `src/main/resources/static`, so it has no npm
+install, bundler, or CDN dependency. One third-party library ships with it, vendored as files:
+
+### `three` r180 (vendored)
+
+**Purpose:** the routing-core visual on the sign-in screen and in the sidebar.
+
+`assets/vendor/three.module.min.js` and `assets/vendor/three.core.min.js` are the official ES module
+build. `index.html` maps the bare specifier with an import map:
+
+```html
+<script type="importmap">{ "imports": { "three": "/assets/vendor/three.module.min.js" } }</script>
+```
+
+Consequences worth knowing:
+
+* Both files must stay together — the module re-exports from `./three.core.min.js`.
+* They are served under `/assets/**`, which `SecurityConfig` already permits publicly, like the rest
+  of the static UI.
+* `assets/hub-scene.js` is loaded with a dynamic `import()` that never blocks boot. If the module is
+  missing, or WebGL is unavailable, `createHubScene()` returns `null` and the CSS backdrop stands in.
+* To upgrade, replace both vendor files and re-check `hub-scene.js` against the release notes; no
+  other file references three.js.
+
+Everything else in the UI is hand-written: `styles.css` carries the design tokens for the three
+themes (`dark`, `light`, `blueprint`, selected by `[data-theme]` on `<html>` and remembered in
+`localStorage` under `ash.theme`), and the scene reads its colours from the `--scene-*` tokens, so a
+theme change recolours the constellation without a second stylesheet.
+
+---
+
 ## Dependency Architecture
 
 The dependencies can be viewed as the following layers:

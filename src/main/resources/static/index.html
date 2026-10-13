@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0E1218">
+  <title>AI Support Hub — agent dispatch console</title>
+  <meta name="description" content="Multi-tenant AI support hub: conversations queue, knowledge training, client onboarding and API integration.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%237C6BF5' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%232DD4BF'/%3E%3Ccircle cx='16' cy='3' r='2.4' fill='%237C6BF5'/%3E%3Ccircle cx='28' cy='22' r='2.4' fill='%232DD4BF'/%3E%3Ccircle cx='4' cy='22' r='2.4' fill='%23FBBF24'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@85..110,500..800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <!-- three.js is vendored locally (r180) so the console still paints without a CDN. -->
+  <script type="importmap">
+    { "imports": { "three": "/assets/vendor/three.module.min.js" } }
+  </script>
+</head>
+<body>
+
+  <!-- Login screen -->
+  <div id="login-screen" class="login-screen hidden">
+    <canvas id="login-scene" class="scene-canvas" aria-hidden="true"></canvas>
+    <div class="login-scrim" aria-hidden="true"></div>
+
+    <div class="theme-switch" role="radiogroup" aria-label="Colour theme">
+      <button type="button" class="theme-opt" role="radio" data-set-theme="dark" aria-checked="false"
+              style="--sw-a:#0E1218; --sw-b:#8B7CF6"><span class="theme-swatch"></span><span class="theme-name">Console</span></button>
+      <button type="button" class="theme-opt" role="radio" data-set-theme="light" aria-checked="false"
+              style="--sw-a:#FFFFFF; --sw-b:#4F42D1"><span class="theme-swatch"></span><span class="theme-name">Daylight</span></button>
+      <button type="button" class="theme-opt" role="radio" data-set-theme="blueprint" aria-checked="false"
+              style="--sw-a:#071219; --sw-b:#F2A63B"><span class="theme-swatch"></span><span class="theme-name">Blueprint</span></button>
+    </div>
+
+    <div class="login-card">
+      <p class="login-eyebrow">Agent dispatch</p>
+      <div class="login-mark">
+        <img class="avatar-3d" src="/assets/avatar.png" alt="AI Support Hub assistant" width="88" height="88">
+      </div>
+      <h1 class="login-title">AI Support Hub</h1>
+      <p class="login-sub">Every tenant’s AI support tickets, routed from one console.</p>
+      <form id="login-form" autocomplete="off">
+        <label>
+          <span>Username</span>
+          <input type="text" id="login-username" placeholder="admin" required>
+        </label>
+        <label>
+          <span>Password</span>
+          <input type="password" id="login-password" placeholder="••••••••" required>
+        </label>
+        <div id="login-error" class="form-error hidden"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="login-btn">Sign in</button>
+      </form>
+    </div>
+
+    <div class="login-foot">
+      <span>Built by <a href="https://github.com/usm4nhafeez" target="_blank" rel="noreferrer noopener">Muhammad Usman · @usm4nhafeez</a></span>
+      <span class="sep">/</span>
+      <span><a href="https://github.com/usm4nhafeez/AI-Support-Hub" target="_blank" rel="noreferrer noopener">Source on GitHub</a></span>
+      <span class="sep">/</span>
+      <span><a href="https://www.linkedin.com/in/iusman07/" target="_blank" rel="noreferrer noopener">LinkedIn</a></span>
+    </div>
+  </div>
+
+  <!-- App shell -->
+  <div id="app-shell" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <svg viewBox="0 0 44 44" width="30" height="30" aria-hidden="true" class="hub-mark">
+          <circle cx="22" cy="22" r="15" fill="none" stroke="url(#hubGrad2)" stroke-width="2.5"/>
+          <circle cx="22" cy="22" r="5" fill="#2DD4BF"/>
+          <circle cx="22" cy="4"  r="3.2" fill="#7C6BF5"/>
+          <circle cx="37.6" cy="31" r="3.2" fill="#2DD4BF"/>
+          <circle cx="6.4" cy="31" r="3.2" fill="#FBBF24"/>
+          <defs><linearGradient id="hubGrad2" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#7C6BF5"/><stop offset="1" stop-color="#2DD4BF"/>
+          </linearGradient></defs>
+        </svg>
+        <span class="brand-text">AI Support<span class="brand-accent">Hub</span></span>
+      </div>
+      <nav class="sidebar-nav" aria-label="Main">
+        <button class="nav-item active" data-view="conversations">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 14.5a2 2 0 0 1-2 2H8l-5 4V5.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Conversations
+        </button>
+        <button class="nav-item" data-view="chat">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
+          Chat Playground
+        </button>
+        <button class="nav-item" data-view="knowledge">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h7a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H2zM22 4h-7a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H22z"/></svg>
+          Knowledge
+        </button>
+        <button class="nav-item" data-view="clients">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v15M15 10h3a2 2 0 0 1 2 2v9M2 21h20M8 8h3M8 12h3M8 16h3"/></svg>
+          Clients
+        </button>
+        <button class="nav-item" data-view="guide">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/></svg>
+          API Guide
+        </button>
+        <button class="nav-item" data-view="about">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.2" r="3.6"/><path d="M5 20.4a7 7 0 0 1 14 0"/></svg>
+          About
+        </button>
+      </nav>
+      <div class="sidebar-hub">
+        <canvas id="hub-mini" aria-hidden="true"></canvas>
+        <span class="hub-tag">routing core</span>
+      </div>
+      <div class="sidebar-user">
+        <img class="avatar-3d" src="/assets/avatar.png" alt="" aria-hidden="true">
+        <div>
+          <p class="user-name" id="user-name">Signed out</p>
+          <p class="user-role" id="user-role">agent console</p>
+        </div>
+      </div>
+      <div class="sidebar-footer">
+        <div class="api-status">
+          <span id="api-dot" class="dot dot-unknown"></span>
+          <span id="api-status-text">Checking API…</span>
+        </div>
+        <button id="logout-btn" class="btn btn-ghost btn-small">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3M16 17l5-5-5-5M21 12H10"/></svg>
+          Log out
+        </button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="view-eyebrow" id="view-eyebrow">Queue</p>
+          <h2 id="view-title">Conversations</h2>
+        </div>
+        <div class="topbar-actions">
+          <div class="theme-switch" role="radiogroup" aria-label="Colour theme">
+            <button type="button" class="theme-opt" role="radio" data-set-theme="dark" aria-checked="false"
+                    style="--sw-a:#0E1218; --sw-b:#8B7CF6"><span class="theme-swatch"></span><span class="theme-name">Console</span></button>
+            <button type="button" class="theme-opt" role="radio" data-set-theme="light" aria-checked="false"
+                    style="--sw-a:#FFFFFF; --sw-b:#4F42D1"><span class="theme-swatch"></span><span class="theme-name">Daylight</span></button>
+            <button type="button" class="theme-opt" role="radio" data-set-theme="blueprint" aria-checked="false"
+                    style="--sw-a:#071219; --sw-b:#F2A63B"><span class="theme-swatch"></span><span class="theme-name">Blueprint</span></button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Conversations view -->
+      <section id="view-conversations" class="view">
+        <div class="toolbar">
+          <input type="search" id="conv-search" class="input" placeholder="Filter by customer, key or summary…">
+          <button class="btn btn-secondary" id="conv-refresh">
+            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 5.7L4 8M4 4v4h4M4 13a8 8 0 0 0 13.7 5.3L20 16M20 20v-4h-4"/></svg>
+            Refresh
+          </button>
+        </div>
+        <div class="card table-card">
+          <table class="table" id="conv-table">
+            <thead>
+              <tr>
+                <th>Conversation</th><th>Customer</th><th>Status</th>
+                <th>Priority</th><th>Agent</th><th>Updated</th>
+              </tr>
+            </thead>
+            <tbody id="conv-body"></tbody>
+          </table>
+          <div id="conv-empty" class="empty hidden">
+            <svg class="empty-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            <p>No conversations yet. Chat with the AI assistant to create one.</p>
+            <button class="btn btn-secondary btn-small" data-goto="chat">Open Chat Playground</button>
+          </div>
+          <div id="conv-loading" class="loading hidden"><span class="spinner"></span> Loading…</div>
+        </div>
+      </section>
+
+      <!-- Chat view -->
+      <section id="view-chat" class="view hidden">
+        <div class="chat-grid">
+          <div class="card chat-panel">
+            <div class="chat-head">
+              <div class="chat-head-title">
+                <img class="avatar-3d avatar-sm" src="/assets/avatar.png" alt="" aria-hidden="true">
+                <h3>Support Chat</h3>
+              </div>
+              <span id="chat-status" class="badge badge-gray">new conversation</span>
+            </div>
+            <div id="chat-transcript" class="chat-transcript">
+              <div class="chat-msg chat-msg-ai">Ask a support question to test the assistant.</div>
+            </div>
+            <form id="chat-form" class="chat-input-row">
+              <input type="text" id="chat-input" class="input" placeholder="Type a message…" autocomplete="off" required>
+              <button type="submit" class="btn btn-primary" id="chat-send">Send</button>
+            </form>
+          </div>
+          <div class="card creds-panel">
+            <h3>Client credentials</h3>
+            <label class="field"><span>Customer ID</span>
+              <input type="text" id="chat-customer" class="input" value="cust-001"></label>
+            <label class="field"><span>Client key</span>
+              <input type="text" id="client-key" class="input" placeholder="demo-client"></label>
+            <label class="field"><span>API key</span>
+              <span class="secret-wrap">
+                <input type="password" id="api-key" class="input" placeholder="DEMO_API_KEY value">
+                <button type="button" class="eye-btn" id="api-key-toggle" aria-label="Show or hide API key">
+                  <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>
+                </button>
+              </span>
+            </label>
+            <button type="button" class="btn btn-ghost btn-small" id="chat-reset">Reset conversation</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Knowledge view -->
+      <section id="view-knowledge" class="view hidden">
+        <div class="card kn-project-card">
+          <div class="kn-project-row">
+            <label class="field kn-project-field"><span>Project to train</span>
+              <select id="kn-client" class="input" aria-describedby="kn-target"></select></label>
+            <button type="button" class="btn btn-ghost btn-small" id="kn-client-refresh" aria-label="Reload projects">Refresh</button>
+          </div>
+          <p class="kn-target" id="kn-target">
+            <span class="kn-target-label">Training into</span>
+            <strong id="kn-target-name">—</strong>
+            <span class="kn-target-key" id="kn-target-key-wrap" hidden>
+              <span class="kn-target-label">client key</span>
+              <code class="kn-key" id="kn-target-key"></code>
+              <button type="button" class="btn btn-ghost btn-small copy-btn" data-copy="kn-target-key">Copy</button>
+            </span>
+          </p>
+          <div id="kn-docs" class="kn-docs"></div>
+        </div>
+        <div class="tabs">
+          <button class="tab active" data-tab="kn-text">Text document</button>
+          <button class="tab" data-tab="kn-file">File upload</button>
+        </div>
+        <div id="kn-text" class="card">
+          <h3>Ingest text knowledge</h3>
+          <p class="muted small" id="kn-text-project">Training into: <strong id="kn-text-project-name">—</strong></p>
+          <form id="kn-text-form">
+            <div class="form-row">
+              <label class="field"><span>Name *</span><input type="text" id="kn-name" class="input" required placeholder="refund-policy"></label>
+              <label class="field"><span>Category</span><input type="text" id="kn-category" class="input" placeholder="billing"></label>
+              <label class="field"><span>Version</span><input type="text" id="kn-version" class="input" placeholder="1.0"></label>
+            </div>
+            <label class="field"><span>Content *</span>
+              <textarea id="kn-content" class="input textarea" rows="8" required placeholder="Paste support documentation, policies, FAQs…"></textarea></label>
+            <div id="kn-text-result" class="result-box hidden"></div>
+            <button type="submit" class="btn btn-primary" id="kn-text-submit" disabled>Ingest document</button>
+          </form>
+        </div>
+        <div id="kn-file" class="card hidden">
+          <h3>Upload a file</h3>
+          <p class="muted small">Training into: <strong id="kn-file-project-name">—</strong> · PDF or Markdown, up to 25 MB.</p>
+          <form id="kn-file-form">
+            <label class="field"><span>File *</span>
+              <input type="file" id="kn-file-input" class="input" accept=".pdf,.md,.markdown" required></label>
+            <p class="kn-file-meta muted small hidden" id="kn-file-meta"></p>
+            <div class="form-row">
+              <label class="field"><span>Name</span><input type="text" id="knf-name" class="input" placeholder="defaults to file name"></label>
+              <label class="field"><span>Category</span><input type="text" id="knf-category" class="input" placeholder="general"></label>
+              <label class="field"><span>Version</span><input type="text" id="knf-version" class="input" placeholder="1.0"></label>
+            </div>
+            <div id="kn-upload-progress" class="kn-progress hidden" role="progressbar" aria-label="Uploading file"></div>
+            <div id="kn-file-result" class="result-box hidden"></div>
+            <button type="submit" class="btn btn-primary" id="kn-file-submit" disabled>Upload &amp; ingest</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- Clients view -->
+      <section id="view-clients" class="view hidden">
+        <div class="onboard-grid">
+          <div class="card" id="client-form-card">
+            <h3>Onboard a client</h3>
+            <p class="muted small">Client key and API key are generated automatically. Keys are unique by construction — if a generated key ever collides, the hub issues a unique variant and shows it on the ticket.</p>
+            <form id="client-form" autocomplete="off">
+              <label class="field"><span>Project name *</span>
+                <input type="text" id="cl-name" class="input" required placeholder="Acme Corp"></label>
+
+              <div id="gen-preview" class="gen-preview hidden">
+                <div class="gen-row">
+                  <span class="gen-label">Client key</span>
+                  <code class="gen-value" id="gen-client-key"></code>
+                  <button type="button" class="btn btn-ghost btn-small copy-btn" data-copy="gen-client-key">Copy</button>
+                </div>
+                <div class="gen-row">
+                  <span class="gen-label">API key</span>
+                  <code class="gen-value" id="gen-api-key"></code>
+                  <button type="button" class="btn btn-ghost btn-small copy-btn" data-copy="gen-api-key">Copy</button>
+                </div>
+                <button type="button" class="btn btn-ghost btn-small" id="gen-reroll">Generate again</button>
+              </div>
+
+              <div id="client-result" class="result-box hidden"></div>
+              <button type="submit" class="btn btn-primary" id="client-create">Generate &amp; register client</button>
+            </form>
+          </div>
+
+          <div id="ticket-slot" class="ticket-slot"></div>
+        </div>
+
+        <div class="card client-list-card">
+          <div class="client-list-head">
+            <div>
+              <h3>Registered projects</h3>
+              <p class="muted small">API keys are stored only as hashes, so they appear nowhere in this list — each was revealed once on its credential ticket. Lost one? Press Rotate key on the row: the project gets a fresh API secret while its client key, id and all trained knowledge stay exactly as they are.</p>
+            </div>
+            <button type="button" class="btn btn-ghost btn-small" id="client-list-refresh" aria-label="Reload projects">Refresh</button>
+          </div>
+          <div id="client-list"></div>
+        </div>
+
+        <div class="card agents-card">
+          <div class="client-list-head">
+            <div>
+              <h3>Support agents</h3>
+              <p class="muted small">An agent is a login for the Conversations queue. Add teammates here, then hand tickets to them from the Agent column. Usernames are globally unique — if one is taken, the hub issues a variant and the add result shows the exact name to sign in with. Passwords are stored only as BCrypt hashes. Press Remove on a row to take away that login and nothing else: their tickets return to the queue, and the project, its keys and its trained knowledge stay. Admin rows carry a Protected note instead of a button — this dashboard never removes an admin, so a project always keeps someone who can manage it. Your own account shows Signed in and cannot be removed either.</p>
+            </div>
+            <button type="button" class="btn btn-ghost btn-small" id="ag-refresh" aria-label="Reload agents">Refresh</button>
+          </div>
+          <div class="ag-form">
+            <label class="field"><span>Project</span>
+              <select id="ag-project" class="input"></select></label>
+            <label class="field"><span>Username *</span>
+              <input type="text" id="ag-username" class="input" placeholder="e.g. rashmi" autocomplete="off"></label>
+            <label class="field"><span>Password *</span>
+              <input type="password" id="ag-password" class="input" placeholder="min 8 characters" autocomplete="new-password"></label>
+            <button type="button" class="btn btn-primary" id="ag-add" disabled>Add agent</button>
+          </div>
+          <div id="ag-list" class="ag-list"></div>
+        </div>
+      </section>
+
+      <!-- API Guide view -->
+      <section id="view-guide" class="view hidden">
+        <div class="guide">
+          <div class="card">
+            <h3>1 · Get your project's keys</h3>
+            <p class="muted small">Every application that embeds the support bot is registered as a client (project) with its own credentials. The API key is shown only once, at onboarding.</p>
+            <ol class="guide-steps">
+              <li>Open <strong>Clients</strong> and enter the project name — the hub generates a unique client key and a strong API key.</li>
+              <li>Copy both values from the credential ticket and store them in your application's environment (for example <code>SUPPORT_CLIENT_KEY</code> and <code>SUPPORT_API_KEY</code>).</li>
+            </ol>
+            <p class="muted small">Lost the API key? It can't be recovered — but <strong>Clients → Rotate key</strong> issues a new one for the same project, so nothing needs re-training. The old key stops working the moment you rotate.</p>
+          </div>
+
+          <div class="card">
+            <h3>2 · Call the chat API</h3>
+            <p class="muted small">Send two headers with every request from your application. Never expose the API key in browser code — proxy through your backend.</p>
+            <div class="code-block">
+              <pre><code id="guide-curl">curl -X POST http://localhost:8000/api/v1/support/chat \
+  -H "Content-Type: application/json" \
+  -H "X-Client-Key: &lt;your-client-key&gt;" \
+  -H "X-API-Key: &lt;your-api-key&gt;" \
+  -d '{"customerId":"user-123","message":"What is the return policy?"}'</code></pre>
+              <button type="button" class="btn btn-ghost btn-small" id="guide-copy-curl">Copy with my credentials</button>
+            </div>
+            <div class="form-row guide-fields">
+              <div><span class="gen-label">customerId</span><p class="muted small">Your user's id. A conversation is created on first message.</p></div>
+              <div><span class="gen-label">conversationId</span><p class="muted small">Optional. Send the id from the reply to continue the same conversation.</p></div>
+              <div><span class="gen-label">message</span><p class="muted small">The customer's question.</p></div>
+            </div>
+            <p class="muted small">Reply: <code>{"conversationId":"…","status":"AI_HANDLING","response":"…"}</code> — keep <code>conversationId</code> for follow-ups.</p>
+          </div>
+
+          <div class="card">
+            <h3>3 · Train your project's knowledge</h3>
+            <p class="muted small">The bot only answers from knowledge trained for your project. Upload it the same way — with your project's keys.</p>
+            <div class="code-block">
+              <pre><code id="guide-curl-kn">curl -X POST http://localhost:8000/api/v1/knowledge \
+  -H "Content-Type: application/json" \
+  -H "X-Client-Key: &lt;your-client-key&gt;" \
+  -H "X-API-Key: &lt;your-api-key&gt;" \
+  -d '{"name":"return-policy","category":"policies","version":"1.0","content":"Customers may return eligible items within 30 days."}'</code></pre>
+            </div>
+            <p class="muted small">Files: <code>POST /api/v1/knowledge/file</code> as <code>multipart/form-data</code> with a <code>file</code> field — PDF and Markdown only. Agents can also train any project from the <strong>Knowledge</strong> screen.</p>
+          </div>
+
+          <div class="card">
+            <h3>4 · Limits and errors</h3>
+            <table class="table guide-table">
+              <thead><tr><th>Status</th><th>Meaning</th><th>What to do</th></tr></thead>
+              <tbody>
+                <tr><td><span class="badge badge-red">401</span></td><td>Wrong agent username/password (login)</td><td>Check credentials; repeated failures are rate-limited.</td></tr>
+                <tr><td><span class="badge badge-red">403</span></td><td>Missing or wrong <code>X-Client-Key</code>/<code>X-API-Key</code></td><td>Send both headers, and don't mix them with an <code>Authorization</code> header.</td></tr>
+                <tr><td><span class="badge badge-amber">409</span></td><td>Client key collision not auto-resolvable (rare)</td><td>Onboarding normally issues a unique variant of a duplicate key; press Generate again.</td></tr>
+                <tr><td><span class="badge badge-amber">429</span></td><td>Rate limit (10 logins/min per IP · 30 chats/min per client)</td><td>Retry after the <code>Retry-After</code> seconds.</td></tr>
+                <tr><td><span class="badge badge-blue">502</span></td><td>AI provider temporarily unavailable</td><td>Retry; check <code>GEMINI_API_KEY</code> if it persists.</td></tr>
+              </tbody>
+            </table>
+            <p class="muted small">Full reference: <code>docs/API_INTEGRATION.md</code> in the repository.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- About view: who built this, and what it runs on -->
+      <section id="view-about" class="view hidden">
+        <div class="about-grid">
+          <div class="card">
+            <p class="eyebrow">Developer</p>
+            <div class="dev-row">
+              <img class="dev-avatar" id="dev-avatar" src="/assets/avatar.png" alt="Muhammad Usman">
+              <div class="dev-id">
+                <h3 id="dev-name">Muhammad Usman</h3>
+                <p class="dev-bio" id="dev-bio">Software Engineering Student at COMSATS · Lahore, Pakistan</p>
+              </div>
+            </div>
+            <div class="dev-links">
+              <a class="dev-link" id="dev-github" href="https://github.com/usm4nhafeez" target="_blank" rel="noreferrer noopener">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9"/></svg>
+                <span>GitHub</span><strong>@usm4nhafeez</strong>
+              </a>
+              <a class="dev-link" href="https://www.linkedin.com/in/iusman07/" target="_blank" rel="noreferrer noopener">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6zM2 9h4v12H2zM4 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg>
+                <span>LinkedIn</span><strong>in/iusman07</strong>
+              </a>
+              <a class="dev-link" href="mailto:usm4nhafeez@gmail.com">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 6 10-6"/></svg>
+                <span>Email</span><strong>usm4nhafeez@gmail.com</strong>
+              </a>
+            </div>
+            <p class="muted small credit-line">Source, issues and releases for this hub:
+              <a href="https://github.com/usm4nhafeez/AI-Support-Hub" target="_blank" rel="noreferrer noopener">AI-Support-Hub</a>.</p>
+          </div>
+
+          <div class="card">
+            <p class="eyebrow">How this hub is built</p>
+            <p class="stack-note"><strong>Java 27 on Spring Boot 4.1</strong> with <strong>Spring AI 2.0</strong> — Gemini answers grounded in each project’s own documents, retrieved from an <strong>Oracle vector store</strong>. Two credential realms keep tenants apart: agent JWTs for this console, client key + API key hashes for embedded bots. The console itself is a dependency-free SPA; the routing core you see in the sidebar is <strong>Three.js r180</strong>, vendored locally.</p>
+            <div class="stack-list">
+              <span class="stack-chip">Java 27</span>
+              <span class="stack-chip">Spring Boot 4.1</span>
+              <span class="stack-chip">Spring AI 2.0</span>
+              <span class="stack-chip">Google Gemini</span>
+              <span class="stack-chip">Oracle Free · JPA</span>
+              <span class="stack-chip">Oracle vector store</span>
+              <span class="stack-chip">JWT · BCrypt</span>
+              <span class="stack-chip">Three.js r180</span>
+              <span class="stack-chip">Vanilla SPA</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

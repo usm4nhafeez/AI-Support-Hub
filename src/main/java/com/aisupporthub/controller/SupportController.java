@@ -38,6 +38,17 @@ public class SupportController {
         conversationService.addMessage(conversation, MessageRole.AI, answer);
         conversationService.updateStatus(conversation, ConversationStatus.AI_HANDLING);
 
+        // Dashboard shows a summary per conversation: generate one on the first
+        // exchange; fall back to the truncated question if the model call fails.
+        if (conversation.getSummary() == null || conversation.getSummary().isBlank()) {
+            String gist = supportAiService.summarize(request.message(), answer);
+            if (gist == null) {
+                String q = request.message().trim();
+                gist = q.length() > 180 ? q.substring(0, 180) + "…" : q;
+            }
+            conversationService.setSummaryIfMissing(conversation, gist);
+        }
+
         return new ChatResponse(conversation.getConversationKey(), conversation.getStatus().name(), answer);
     }
 }

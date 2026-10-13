@@ -27,7 +27,7 @@ This document summarizes the 11 entity classes currently present in
                                               for               
                                               accountability.   
 
-                      4 `Client`              Represents an     BookVault
+                      4 `Client`              Represents a tenant client
                                               application or    registering to
                                               business          use support
                                               integrating with  APIs.
@@ -39,7 +39,7 @@ This document summarizes the 11 entity classes currently present in
                                               customer and the  
                                               system.           
 
-                      6 `Customer`            Represents an end A BookVault user
+                      6 `Customer`            Represents an end customer
                                               user associated   contacting
                                               with a client     support.
                                               application.      

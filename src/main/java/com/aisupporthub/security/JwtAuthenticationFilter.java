@@ -25,12 +25,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
         throws ServletException, IOException {
         String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
+        if (header != null && header.startsWith("Bearer ")
+            && request.getHeader("X-Client-Key") == null
+            && request.getHeader("X-API-Key") == null) {
             String token = header.substring(7);
             if (jwtService.valid(token)) {
                 String username = jwtService.username(token);
+                Long clientId = jwtService.clientId(token);
                 var auth = new UsernamePasswordAuthenticationToken(
-                    username, null, List.of(new SimpleGrantedAuthority("ROLE_AGENT")));
+                    new AgentPrincipal(username, clientId), null,
+                    List.of(new SimpleGrantedAuthority("ROLE_AGENT")));
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
         }

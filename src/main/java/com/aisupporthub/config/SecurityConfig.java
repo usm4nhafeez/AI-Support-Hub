@@ -2,6 +2,7 @@ package com.aisupporthub.config;
 
 import com.aisupporthub.security.ApiKeyFilter;
 import com.aisupporthub.security.JwtAuthenticationFilter;
+import com.aisupporthub.security.RateLimitFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -27,11 +28,13 @@ public class SecurityConfig {
         return http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/", "/index.html", "/favicon.ico", "/styles.css", "/app.js", "/static/**", "/assets/**").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/info", "/api/v1/agent/auth/login").permitAll()
                 .requestMatchers("/api/v1/support/**", "/api/v1/knowledge/**").hasRole("CLIENT")
                 .requestMatchers("/api/v1/agent/**").hasRole("AGENT")
                 .requestMatchers("/api/v1/clients/**").hasRole("AGENT")
                 .anyRequest().authenticated())
+            .addFilterBefore(new RateLimitFilter(), UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(apiKeyFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .build();

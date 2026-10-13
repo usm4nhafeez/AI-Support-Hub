@@ -1,6 +1,7 @@
 package com.aisupporthub.security;
 
 import com.aisupporthub.service.ClientService;
+import com.aisupporthub.exception.ResourceNotFoundException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,7 +29,7 @@ public class ApiKeyFilter extends OncePerRequestFilter {
         String clientKey = request.getHeader("X-Client-Key");
         String apiKey = request.getHeader("X-API-Key");
 
-        if (clientKey != null && apiKey != null) {
+        if (clientKey != null && apiKey != null && request.getHeader("Authorization") == null) {
             try {
                 var client = clientService.getByKey(clientKey);
                 if (clientService.validApiKey(client, apiKey)) {
@@ -36,7 +37,8 @@ public class ApiKeyFilter extends OncePerRequestFilter {
                         new UsernamePasswordAuthenticationToken(
                             clientKey, null, List.of(new SimpleGrantedAuthority("ROLE_CLIENT"))));
                 }
-            } catch (Exception ignored) {
+            } catch (ResourceNotFoundException ignored) {
+                // Invalid client credentials remain unauthenticated and are rejected by Spring Security.
             }
         }
         chain.doFilter(request, response);

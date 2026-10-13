@@ -66,7 +66,7 @@ Configures Hibernate to generate SQL appropriate for Oracle Database.
 ## 3. Oracle Database
 
 ```properties
-spring.datasource.url=jdbc:oracle:thin:@//localhost:1521/FREEPDB1
+spring.datasource.url=${ORACLE_URL:jdbc:oracle:thin:@//localhost:1521/FREEPDB1}
 spring.datasource.username=${ORACLE_USERNAME}
 spring.datasource.password=${ORACLE_PASSWORD}
 spring.datasource.driver-class-name=oracle.jdbc.OracleDriver
@@ -74,7 +74,14 @@ spring.datasource.driver-class-name=oracle.jdbc.OracleDriver
 
 ### Database URL
 
-Connects the application to the Oracle `FREEPDB1` pluggable database running locally.
+By default the application connects to the Oracle `FREEPDB1` pluggable database
+running on this machine. Set `ORACLE_URL` to point somewhere else — a remote
+database, or your own machine from inside a Docker container, where `localhost`
+means the container and not the host:
+
+```text
+ORACLE_URL=jdbc:oracle:thin:@//host.docker.internal:1521/FREEPDB1
+```
 
 ### Credentials
 
@@ -247,21 +254,110 @@ It can be enabled when the application introduces a configurable system prompt f
 
 ---
 
+## 8. JWT Authentication
+
+```properties
+support.security.jwt-secret=${JWT_SECRET}
+support.security.jwt-expiration-ms=${JWT_EXPIRATION_MS:3600000}
+```
+
+### `JWT_SECRET`
+
+Required signing secret for agent tokens. Must contain at least 32 random bytes.
+
+### `JWT_EXPIRATION_MS`
+
+Token lifetime in milliseconds; defaults to `3600000` (1 hour).
+
+---
+
+## 9. Demo Seeding
+
+```properties
+support.demo.enabled=${DEMO_SEED_ENABLED:true}
+support.demo.client-key=${DEMO_CLIENT_KEY:demo-client}
+support.demo.api-key=${DEMO_API_KEY:}
+support.demo.agent-username=${DEMO_AGENT_USERNAME:admin}
+support.demo.agent-password=${DEMO_AGENT_PASSWORD:}
+```
+
+`DemoDataInitializer` runs at startup and creates the demo client, demo agent,
+and starter knowledge.
+
+### Placeholder-safe behavior
+
+`DEMO_API_KEY` and `DEMO_AGENT_PASSWORD` have **empty defaults**. If either is
+unset or set to `change-me`, the application logs a warning and skips that demo
+row — placeholder secrets are never stored in the database. Register real
+clients from the dashboard instead.
+
+### `DEMO_SEED_ENABLED`
+
+Set to `false` to skip demo seeding entirely (recommended for shared or
+production environments).
+
+---
+
+## 10. Rate Limiting
+
+Rate limits are implemented in `RateLimitFilter` and are currently fixed in
+code, not configurable through properties:
+
+```text
+POST /api/v1/agent/auth/login   10 requests/minute per IP
+POST /api/v1/support/chat       30 requests/minute per X-Client-Key (falls back to IP)
+```
+
+Exceeding a limit returns HTTP `429` with a `Retry-After` header.
+
+---
+
+## 11. File Upload Limits
+
+Knowledge file ingestion (`/api/v1/knowledge/file` and the agent variant)
+accepts multipart uploads up to a configured size:
+
+```properties
+spring.servlet.multipart.max-file-size=25MB
+spring.servlet.multipart.max-request-size=30MB
+```
+
+Spring's built-in default is 1 MB per file, which caused the server to abort
+oversize uploads mid-request (the browser reported "Failed to fetch"). With the
+explicit limits above, a file over 25 MB gets a clean `413` `UPLOAD_TOO_LARGE`
+JSON error instead.
+
+---
+
 ## Environment Variables
 
-Before running the application, configure the following environment variables:
+Before running the application, configure these required environment variables:
 
 ```text
 GEMINI_API_KEY
 ORACLE_USERNAME
 ORACLE_PASSWORD
 JWT_SECRET
-JWT_EXPIRATION_MS
-DEMO_CLIENT_KEY
-DEMO_API_KEY
-DEMO_AGENT_USERNAME
-DEMO_AGENT_PASSWORD
-BOOKVAULT_URL
+```
+
+`JWT_SECRET` must contain at least 32 random bytes. Generate one with:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+The following demo variables are optional. `DEMO_API_KEY` and
+`DEMO_AGENT_PASSWORD` default to empty; when unset, the matching demo rows are
+skipped with a warning rather than seeded with placeholder secrets.
+
+```text
+ORACLE_URL               (default jdbc:oracle:thin:@//localhost:1521/FREEPDB1)
+JWT_EXPIRATION_MS        (default 3600000)
+DEMO_SEED_ENABLED        (default true; false disables demo seeding)
+DEMO_CLIENT_KEY          (default demo-client)
+DEMO_API_KEY             (default empty — skip seeding the demo client)
+DEMO_AGENT_USERNAME      (default admin)
+DEMO_AGENT_PASSWORD      (default empty — skip seeding the demo agent)
 ```
 
 Example PowerShell configuration:

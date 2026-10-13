@@ -8,4 +8,7 @@ import java.util.Optional;
 public interface ConversationRepository extends JpaRepository<Conversation, Long> {
     Optional<Conversation> findByConversationKeyAndClientId(String conversationKey, Long clientId);
     List<Conversation> findByClientIdOrderByUpdatedAtDesc(Long clientId);
+
+    /** Tickets currently handed to one agent — released back to the queue when that account goes. */
+    List<Conversation> findByAssignedAgentId(Long assignedAgentId);
 }

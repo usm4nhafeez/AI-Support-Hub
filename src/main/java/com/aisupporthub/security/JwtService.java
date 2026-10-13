@@ -37,9 +37,16 @@ public class JwtService {
         return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().getSubject();
     }
 
+    public Long clientId(String token) {
+        Object value = Jwts.parser().verifyWith(key).build().parseSignedClaims(token)
+            .getPayload().get("clientId");
+        return value instanceof Number number ? number.longValue() : Long.valueOf(value.toString());
+    }
+
     public boolean valid(String token) {
         try {
             username(token);
+            clientId(token);
             return true;
         } catch (Exception ex) {
             return false;

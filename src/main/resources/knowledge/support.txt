@@ -1,8 +1,10 @@
 AI Support Hub Demo Knowledge
 
-BookVault is a library application integrated with AI Support Hub for demonstration purposes.
+The support hub demo client provides customer support through conversations,
+tenant-specific knowledge, and an AI assistant.
 
-BookVault users can search for books by title, author, ISBN, or genre.
+Customers can ask questions about policies, products, orders, account access,
+or any other information that has been added to the tenant knowledge base.
 
 A customer can ask support about:
 - How to search for books.

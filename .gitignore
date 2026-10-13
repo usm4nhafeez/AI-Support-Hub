@@ -36,3 +36,6 @@ target/
 .idea/
 *.iml
 .env
+### Local scratch (generated images, agent workspace) ###
+vibe_images/
+.qoder/

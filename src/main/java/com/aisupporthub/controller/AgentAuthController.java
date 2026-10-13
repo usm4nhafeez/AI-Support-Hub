@@ -22,6 +22,6 @@ public class AgentAuthController {
     @PostMapping("/login")
     public AgentLoginResponse login(@Valid @RequestBody AgentLoginRequest request) {
         Agent agent = agentService.authenticate(request.username(), request.password());
-        return new AgentLoginResponse(jwtService.generateToken(agent));
+        return new AgentLoginResponse(agent.getUsername(), jwtService.generateToken(agent));
     }
 }
