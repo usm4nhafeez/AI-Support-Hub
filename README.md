@@ -283,21 +283,28 @@ want to start it again later.
 
 This is the profile's main reason to exist: the database no longer has to run on
 your machine, so the app can be deployed somewhere free. Create a project, then
-in the dashboard open Project Settings -> Database and copy the **Session**
-connection string. Build the URL as:
+open Project Settings -> Database -> Connection strings and read the host, port
+and user from there. A host you copy from that page never contains angle brackets:
+`<aws-host>` and `<project-ref>` in this guide are placeholders, and pasting one
+as-is is the usual way to get `java.net.UnknownHostException: <aws-host>…` on the
+first start. Either of these forms works:
 
 ```text
-DB_URL=jdbc:postgresql://<aws-host>.pooler.supabase.com:5432/postgres?sslmode=require
+DB_URL=jdbc:postgresql://<aws-region-host>.pooler.supabase.com:5432/postgres?sslmode=require
+DB_URL=jdbc:postgresql://db.<project-ref>.supabase.co:5432/postgres?sslmode=require
 ```
 
 Three things to get right:
 
-Use the **Session** pooler (port 5432), not the Transaction pooler (6543). A
-Spring Boot app holds a small pool of real connections through HikariCP, and
-transaction pooling discards session state between them. Keep `sslmode=require`:
-Supabase refuses plain connections. Hibernate's `ddl-auto=update` will create all
-twelve `support_*` tables plus `vector_store` on first boot, which is fine for a
-scratch project and a poor idea for a production one.
+Use the **Session** pooler (port 5432), not the Transaction pooler (6543), or the
+direct `db.<project-ref>` host, which is also 5432. A Spring Boot app holds a small
+pool of real connections through HikariCP, and transaction pooling discards session
+state between them. Keep `sslmode=require`: Supabase refuses plain connections. If
+the password contains `@`, `:` or `/`, percent-encode it (`%40`, `%3A`, `%2F`) or
+keep it in `DB_PASSWORD` instead of the URL, which is what this build expects.
+Hibernate's `ddl-auto=update` will create all twelve `support_*` tables plus
+`vector_store` on first boot, which is fine for a scratch project and a poor idea
+for a production one.
 
 `initialize-schema=true` makes Spring AI run `CREATE EXTENSION IF NOT EXISTS
 vector` itself. If the connection role is not allowed to do that, enable pgvector
