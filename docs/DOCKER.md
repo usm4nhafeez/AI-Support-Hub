@@ -4,7 +4,7 @@ Docker turns the project into a self-contained runnable box called an **image**,
 start that image you get a **container** — one live process made from it. The image is built once
 and re-used forever; the container is thrown away and recreated every run. Nothing in this project
 needs to survive that, because all state (conversations, knowledge documents, tenants, agents) lives
-in Oracle, not inside the container.
+in the database — PostgreSQL by default, Oracle on the `oracle` profile — not inside the container.
 
 Everything below is written for two shells: **IntelliJ's built-in Terminal** (PowerShell) and **Git
 Bash**. The commands are the same in both except where noted.
@@ -22,26 +22,31 @@ variables at run time, which is what makes one image safe to use locally and on 
 
 ## One-time setup: the env file for containers
 
-Inside a container, `localhost` means the container itself, not Windows. Your Oracle listener runs on
-the host, so a container that reads `ORACLE_URL=jdbc:oracle:thin:@//localhost:1521/FREEPDB1` looks
-for a database inside its own network namespace and fails with `ORA-12541: ... No listener`.
-Docker Desktop's reserved name `host.docker.internal` points at the host instead.
+Inside a container, `localhost` means the container itself, not Windows. A database on your machine —
+Postgres published on 5433, or the Oracle listener on 1521 — runs on the host, so a container that
+reads `jdbc:postgresql://localhost:5433/ash` or `jdbc:oracle:thin:@//localhost:1521/FREEPDB1` looks
+for it inside its own network namespace and fails with a refused connection or
+`ORA-12541: ... No listener`. Docker Desktop's reserved name `host.docker.internal` points at the
+host instead.
 
-`application.properties` reads the URL from the environment with no fallback
-(`${ORACLE_URL}`), so the variable is mandatory — a container started without it stops immediately
-with `Could not resolve placeholder 'ORACLE_URL'`.
+`application-pgvector.properties` reads the URL from the environment with no fallback (`${DB_URL}`),
+so the variable is mandatory — a container started without it stops immediately with
+`Could not resolve placeholder 'DB_URL'`. On the `oracle` profile the same is true of `${ORACLE_URL}`.
 
 Keep `.env` as it is (so your IDE run keeps working) and derive the Docker copy from it. Git Bash:
 
 ```bash
-sed -e "s#^ORACLE_URL=.*#ORACLE_URL=jdbc:oracle:thin:@//host.docker.internal:1521/FREEPDB1#" .env > .env.docker
+sed -e "s#^DB_URL=.*#DB_URL=jdbc:postgresql://host.docker.internal:5433/ash#" .env > .env.docker
 ```
 
 PowerShell:
 
 ```powershell
-(Get-Content .env) -replace '^ORACLE_URL=.*','ORACLE_URL=jdbc:oracle:thin:@//host.docker.internal:1521/FREEPDB1' | Set-Content .env.docker
+(Get-Content .env) -replace '^DB_URL=.*','DB_URL=jdbc:postgresql://host.docker.internal:5433/ash' | Set-Content .env.docker
 ```
+
+For an Oracle container the same command targets `ORACLE_URL` instead, with
+`jdbc:oracle:thin:@//host.docker.internal:1521/FREEPDB1`.
 
 Only that one line changes; the keys stay in the file and are never printed. `.gitignore` covers
 `.env.*` (with `.env.example` still tracked) and `.dockerignore` keeps both env files out of the
@@ -94,9 +99,9 @@ docker run -d --rm --name ai-support-hub -p 8001:8000 --env-file .env.docker ai-
 | `--env-file .env.docker` | Load every variable from the file. `-e KEY=value` overrides a single one. |
 | last argument | Which image to start. |
 
-With `--env-file`, one line feeds the seven variables the app needs: `ORACLE_URL`,
-`ORACLE_USERNAME`, `ORACLE_PASSWORD`, `GEMINI_API_KEY`, `JWT_SECRET`, `DEMO_AGENT_USERNAME`,
-`DEMO_AGENT_PASSWORD`.
+With `--env-file`, one line feeds the seven variables the default build needs: `DB_URL`,
+`DB_USERNAME`, `DB_PASSWORD`, `GEMINI_API_KEY`, `JWT_SECRET`, `DEMO_AGENT_USERNAME`,
+`DEMO_AGENT_PASSWORD`. On the `oracle` profile, the first three are the `ORACLE_*` names.
 
 ## Watch it start
 
@@ -106,9 +111,11 @@ Healthy boot looks like this:
 Starting AiSupportHubApplication ... using Java 27 with PID 1 (/app/app.jar started by spring)
 Tomcat initialized with port 8000 (http)
 HikariPool-1 - Starting...
-HikariPool-1 - Added connection oracle.jdbc.driver.T4CConnection@...
+HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@...
 Started AiSupportHubApplication in 2x.xxx seconds
 ```
+
+On the `oracle` profile the connection line reads `oracle.jdbc.driver.T4CConnection` instead.
 
 `PID 1` and `started by spring` confirm the container's non-root user is running the JVM. Then:
 
@@ -151,13 +158,15 @@ docker system df                                       # how much disk images an
 docker builder prune                                   # free the build cache (images stay)
 ```
 
-## Running the container against PostgreSQL + pgvector
+## Choosing the database for the container
 
-The same image can use PostgreSQL instead of Oracle. Oracle stays the default; the
-`pgvector` profile swaps the driver, the dialect and the vector store, and it reads
-`DB_URL` / `DB_USERNAME` / `DB_PASSWORD` instead of the three `ORACLE_*`
-variables. See the README section *Choosing your database: Oracle or PostgreSQL + pgvector*
-for the property-by-property detail.
+The same image serves either database with no rebuild. PostgreSQL + pgvector is the
+default, so every `docker run` on this page is already the Postgres path — no profile
+flag is needed. To use Oracle instead, add `-e SPRING_PROFILES_ACTIVE=oracle` and give
+the container `ORACLE_URL` / `ORACLE_USERNAME` / `ORACLE_PASSWORD`; that profile swaps
+the driver, the dialect and the vector store, and never reads `DB_URL`. See the README
+section *Choosing your database: PostgreSQL + pgvector or Oracle* for the
+property-by-property detail.
 
 Start a database container first (data survives app restarts because it has a named volume):
 
@@ -165,11 +174,11 @@ Start a database container first (data survives app restarts because it has a na
 docker run -d --name ash-pgvector -e POSTGRES_PASSWORD=change-me -e POSTGRES_DB=ash -v ash-pg-data:/var/lib/postgresql/data -p 5433:5432 pgvector/pgvector:pg17
 ```
 
-Then run the app with the profile switched on. `host.docker.internal` is what a container uses to
+Then run the app against it. `host.docker.internal` is what a container uses to
 reach a port published by Docker on your Windows machine — here, Postgres on 5433:
 
 ```powershell
-docker run --rm -d --name ai-support-hub -p 8001:8000 --env-file .env.docker -e SPRING_PROFILES_ACTIVE=pgvector -e DB_URL="jdbc:postgresql://host.docker.internal:5433/ash" -e DB_USERNAME=postgres -e DB_PASSWORD=change-me ai-support-hub
+docker run --rm -d --name ai-support-hub -p 8001:8000 --env-file .env.docker -e DB_URL="jdbc:postgresql://host.docker.internal:5433/ash" -e DB_USERNAME=postgres -e DB_PASSWORD=change-me ai-support-hub
 ```
 
 `-e` wins over `--env-file` for the same key, so those flags are enough; you do not need a separate
@@ -181,20 +190,30 @@ The database does not have to be a container. Pointed at a hosted database, the 
 machine:
 
 ```powershell
-docker run --rm -d --name ai-support-hub -p 8001:8000 --env-file .env -e SPRING_PROFILES_ACTIVE=pgvector -e DB_URL="jdbc:postgresql://aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require" -e DB_USERNAME=postgres -e DB_PASSWORD=your-database-password ai-support-hub
+docker run --rm -d --name ai-support-hub -p 8001:8000 --env-file .env -e DB_URL="jdbc:postgresql://aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require" -e DB_USERNAME=postgres -e DB_PASSWORD=your-database-password ai-support-hub
 ```
 
 Pass the real `.env` there rather than `.env.docker`: that second file exists only to rewrite the
-Oracle host, and the pgvector profile never reads `ORACLE_URL`. Quotes matter — the URL contains `?`
+database host, and a hosted URL needs no rewriting. Quotes matter — the URL contains `?`
 and `&`, and PowerShell would otherwise split it into extra arguments.
+
+Oracle in a container is the same command with the profile switched and Oracle's variables:
+
+```powershell
+docker run --rm -d --name ai-support-hub -p 8001:8000 --env-file .env.docker -e SPRING_PROFILES_ACTIVE=oracle ai-support-hub
+```
+
+That assumes `.env.docker` carries the rewritten `ORACLE_URL`. A container can only reach an Oracle
+database the host can: nothing here installs or hosts Oracle for you.
 
 ## If it does not come up
 
 | Message | What happened |
 | --- | --- |
 | `unknown shorthand flag: 'p' in -p` | Two commands were pasted as one line. `docker build` and `docker run` are separate commands; run one, press Enter, then the other. |
-| `Could not resolve placeholder 'ORACLE_URL'` | The env file was not loaded, or the file is missing that key: `docker run --rm --env-file .env.docker` must point at a real `.env.docker`. |
-| `ORA-12541: Cannot connect. No listener at host localhost port 1521` | The container is still using `localhost`. Recreate `.env.docker` (command above), and pass it with `--env-file`. |
+| `Could not resolve placeholder 'DB_URL'` | The env file was not loaded, or the file is missing that key: `docker run --rm --env-file .env.docker` must point at a real `.env.docker`. On the `oracle` profile the same message names `ORACLE_URL`. |
+| `Connection to localhost:5432 refused` | The container is still using `localhost`. Rewrite `DB_URL` to `host.docker.internal` (command above), and pass the file with `--env-file`. |
+| `ORA-12541: Cannot connect. No listener at host localhost port 1521` | Only on the `oracle` profile: the container is still using `localhost`. Recreate `.env.docker` with the rewritten `ORACLE_URL`. |
 | `ORA-12541 ... host.docker.internal` with Oracle running on Windows | Docker Desktop is stopped, or Windows Firewall is blocking the Docker network from port 1521. Check the listener binds widely: `netstat -ano \| findstr 1521` should show `0.0.0.0:1521`. |
 | `Bind for 0.0.0.0:8001 failed: port is already allocated` | Something already holds 8001 — usually an earlier container that was started without `--rm`. `docker ps`, then `docker rm -f <name>`. |
 | `Conflict. The container name "/ai-support-hub" is already in use` | A previous container of that name still exists. `docker rm -f ai-support-hub`. |
@@ -224,8 +243,11 @@ and attach an IntelliJ **Remote JVM Debug** configuration to port 5005.
 
 Two facts decide the destination:
 
-- The container needs a **reachable Oracle database** the moment it starts. Whatever hosts the app
-  must also reach Oracle; nobody hosts Oracle for free, so a free app tier alone will crash-loop.
+- The container needs a **reachable database** the moment it starts. By default that is PostgreSQL
+  with pgvector, and a free hosted plan — Supabase, Neon, a school-tier Postgres — satisfies it, so
+  the app can move to a free app tier while the database stays managed. On the `oracle` profile
+  instead, whatever hosts the app must also reach Oracle; nobody hosts Oracle for free, so a free
+  app tier alone will crash-loop.
 - Hosts assign their own port through the `PORT` variable, which this image already honours
   (`${PORT:+--server.port=$PORT}` in the entrypoint), and the app runs as a non-root user, as several
   platforms require.

@@ -1,8 +1,8 @@
 # AI Support Hub
 
 AI Support Hub is a reusable, multi-tenant customer-support API built with
-Spring Boot, Spring AI, Google Gemini, Oracle Database, Oracle Vector Search,
-Spring Security, and JWT authentication.
+Spring Boot, Spring AI, Google Gemini, PostgreSQL with pgvector (or Oracle
+Database with Oracle Vector Search), Spring Security, and JWT authentication.
 
 The platform provides:
 
@@ -11,7 +11,7 @@ The platform provides:
 - Agent JWT authentication
 - Customer conversations and message history
 - Retrieval-augmented generation (RAG) over tenant knowledge
-- Oracle Vector Search storage
+- Vector knowledge storage: pgvector, or Oracle Vector Search on the Oracle profile
 - Audit logging
 - Built-in agent dashboard UI (chat playground, knowledge training, client onboarding, API guide, three themes, Three.js routing core)
 - Rate limiting on login and chat endpoints
@@ -27,7 +27,8 @@ The platform provides:
 | Spring Security | Spring Boot managed |
 | Google Gemini chat model | `gemini-2.5-flash` |
 | Google Gemini embedding model | `gemini-embedding-001` |
-| Oracle Database | Oracle Free / `FREEPDB1` |
+| Default database | PostgreSQL + pgvector (Supabase, Neon, or a local container) |
+| Alternative database | Oracle Free / `FREEPDB1` with Oracle Vector Search |
 | Build tool | Maven |
 
 ## Architecture
@@ -47,46 +48,46 @@ Security Filters
         v
 Application Services
         |
-        +--> Oracle relational data
-        +--> Oracle Vector Search   (or PostgreSQL + pgvector, see below)
+        +--> relational data (PostgreSQL, or Oracle)
+        +--> vector store: pgvector   (Oracle Vector Search on the oracle profile)
         +--> Google Gemini
 ```
 
 The customer application only needs to call this REST API. It does not need to
-include Spring AI or connect directly to Oracle.
+include Spring AI or connect directly to the database.
 
 ## Requirements
 
 - Java 27
 - Maven, or the included Maven wrapper
-- Oracle Database with the `FREEPDB1` service
-- An Oracle application user such as `AIUSER`
+- PostgreSQL with the `vector` extension — a local container, Supabase, Neon, or
+  any managed PostgreSQL
 - Google Gemini API key
 
-PostgreSQL is an alternative to Oracle for everything above. Install the
-`vector` extension instead, activate the `pgvector` profile, and no Oracle
-database is needed. Oracle stays the default and nothing about it changes; see
-[Choosing your database](#choosing-your-database-oracle-or-postgresql--pgvector).
+Oracle is the alternative for everything above: a database with the `FREEPDB1`
+service and an application user such as `AIUSER`, plus `SPRING_PROFILES_ACTIVE=oracle`.
+Neither database is built into the other's setup; see
+[Choosing your database](#choosing-your-database-postgresql--pgvector-or-oracle).
 
 ## Configuration
 
 Sensitive values are loaded from environment variables. Do not commit real
 passwords, API keys, JWT secrets, or database credentials.
 
-Required environment variables:
+Required environment variables, for the PostgreSQL default:
 
 ```text
 GEMINI_API_KEY=<required Gemini API key>
-ORACLE_URL=<required JDBC URL, e.g. jdbc:oracle:thin:@//localhost:1521/FREEPDB1>
-ORACLE_USERNAME=<required Oracle username>
-ORACLE_PASSWORD=<required Oracle password>
+DB_URL=<required JDBC URL, e.g. jdbc:postgresql://localhost:5433/ash>
+DB_USERNAME=<required PostgreSQL username>
+DB_PASSWORD=<required PostgreSQL password>
 JWT_SECRET=<required random secret, at least 32 bytes>
 ```
 
 The database URL has no built-in default: it comes from the environment so one
-build works on any machine. On the `pgvector` profile the three `ORACLE_*`
-variables are replaced by `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`,
-and `ORACLE_URL` is not read at all.
+build works on any machine. With `SPRING_PROFILES_ACTIVE=oracle` the three `DB_*`
+variables are replaced by `ORACLE_URL`, `ORACLE_USERNAME` and `ORACLE_PASSWORD`,
+and `DB_URL` is not read at all.
 
 Optional environment variables and their defaults:
 
@@ -111,16 +112,18 @@ For IntelliJ IDEA, configure these values in:
 Run -> Edit Configurations -> Environment variables
 ```
 
-For a PowerShell session:
+For a PowerShell session, on the PostgreSQL default:
 
 ```powershell
 $env:GEMINI_API_KEY = "your-gemini-api-key"
-$env:ORACLE_USERNAME = "AIUSER"
-$env:ORACLE_PASSWORD = "your-oracle-password"
+$env:DB_URL = "jdbc:postgresql://localhost:5433/ash"
+$env:DB_USERNAME = "postgres"
+$env:DB_PASSWORD = "your-postgres-password"
 $env:DEMO_AGENT_PASSWORD = "your-agent-password"
 ```
 
-The application connects to:
+To use Oracle for that session instead, set `SPRING_PROFILES_ACTIVE=oracle` and
+the `ORACLE_*` variables, and the application connects to
 
 ```text
 jdbc:oracle:thin:@//localhost:1521/FREEPDB1
@@ -133,12 +136,18 @@ For a property-by-property configuration reference, see
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 To run the same application as a Docker container instead of from your IDE, see
-[docs/DOCKER.md](docs/DOCKER.md). A container sees its own `localhost`, so it needs its own
-`ORACLE_URL` pointing at `host.docker.internal`.
+[docs/DOCKER.md](docs/DOCKER.md). A container sees its own `localhost`, so an Oracle
+container needs its own `ORACLE_URL` pointing at `host.docker.internal`; a hosted
+PostgreSQL needs nothing special.
 
 ## Database setup
 
-Run the Oracle setup guide as follows:
+PostgreSQL needs no schema script: on first start the `pgvector` profile runs
+`sql/postgres-bootstrap.sql` for the extensions and the `clob` domain, Hibernate
+creates the twelve `support_*` tables, and Spring AI creates `vector_store`. Point
+`DB_URL` at an empty database and start the application.
+
+For the Oracle profile, run the Oracle setup guide as follows:
 
 1. Create or configure the `AIUSER` account inside the `FREEPDB1` PDB.
 2. Grant the required Oracle privileges and tablespace quota.
@@ -151,28 +160,48 @@ The application uses Hibernate `ddl-auto=update` for local development. This is
 convenient during development, but controlled migrations are recommended for
 production.
 
-The application maps Java boolean values to Oracle numeric boolean values
-(`0`/`1`) and maps `Message.role` to the existing `SENDER_TYPE` column.
+On the Oracle profile, the application maps Java boolean values to Oracle numeric
+boolean values (`0`/`1`) and maps `Message.role` to the existing `SENDER_TYPE`
+column.
 
-## Choosing your database: Oracle or PostgreSQL + pgvector
+## Choosing your database: PostgreSQL + pgvector or Oracle
 
-Oracle is the default and stays fully supported: run the application exactly as
-before and it uses `ORACLE_URL`, the Oracle dialect and Oracle Vector Search. No
-Oracle setting moved into a profile, and nothing about that path changes unless
-you ask for the `pgvector` profile.
+This build starts on PostgreSQL + pgvector. `application.properties` carries
 
-The profile is switched on, never mixed in:
-
-```text
-SPRING_PROFILES_ACTIVE=pgvector
+```properties
+spring.profiles.active=pgvector
 ```
 
-IntelliJ IDEA: Run -> Edit Configurations -> *ai hub* -> Active profiles: `pgvector`.
+so a deployment needs only `DB_URL`, `DB_USERNAME` and `DB_PASSWORD` and never
+sets a profile variable. That matters on hosts where you cannot control the
+environment: a bare `java -jar`, a plain `docker run`, and a free-tier platform
+all resolve to PostgreSQL without extra configuration.
+
+The value in the file is the weakest link by design — an environment variable,
+a `-D` argument, or a command-line `--spring.profiles.active` still outranks it. So
+if a platform injects its own `SPRING_PROFILES_ACTIVE` for unrelated reasons, it
+overrides this default and the app falls through to the Oracle keys, which shows up
+as `Could not resolve placeholder 'ORACLE_URL'` at startup. Set the variable
+explicitly on such a host rather than relying on the file.
+
+Oracle is untouched and still fully supported. Its datasource, dialect and
+vector-store settings stayed in `application.properties`, and there is no
+`application-oracle.properties`, so choosing that name loads no profile file at
+all and the Oracle settings apply exactly as they always did. One environment
+variable switches back, because an environment variable outranks the value in the
+file:
+
+```text
+SPRING_PROFILES_ACTIVE=oracle
+```
+
+IntelliJ IDEA: Run -> Edit Configurations -> *ai hub* -> Active profiles: `oracle`.
+Leave that field empty for PostgreSQL.
 
 Maven or a jar from a terminal:
 
 ```powershell
-$env:SPRING_PROFILES_ACTIVE = "pgvector"
+# PostgreSQL + pgvector (the default): just the database variables
 $env:DB_URL = "jdbc:postgresql://aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require"
 $env:DB_USERNAME = "postgres"
 $env:DB_PASSWORD = "your-database-password"
@@ -180,24 +209,29 @@ $env:DB_PASSWORD = "your-database-password"
 ```
 
 ```bash
-SPRING_PROFILES_ACTIVE=pgvector java -jar target/ai-support-hub-0.0.1-SNAPSHOT.jar
+# Oracle instead
+SPRING_PROFILES_ACTIVE=oracle java -jar target/ai-support-hub-0.0.1-SNAPSHOT.jar
 ```
 
 Docker, reusing the same image:
 
 ```text
-docker run --rm -p 8001:8000 --env-file .env.pgvector ai-support-hub:0.0.1
+docker run --rm -p 8001:8000 --env-file .env.docker ai-support-hub:0.0.1
+```
+
+```text
+docker run --rm -p 8001:8000 --env-file .env.docker -e SPRING_PROFILES_ACTIVE=oracle ai-support-hub:0.0.1
 ```
 
 ### What the profile changes
 
-| Concern | Default (Oracle) | `pgvector` profile |
+| Concern | `pgvector` profile (default) | `SPRING_PROFILES_ACTIVE=oracle` |
 | --- | --- | --- |
-| JDBC URL, user, password | `ORACLE_URL`, `ORACLE_USERNAME`, `ORACLE_PASSWORD` | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` |
-| Driver and dialect | `oracle.jdbc.OracleDriver`, `OracleDialect` | `org.postgresql.Driver`, `PostgreSQLDialect` |
-| Vector store | Oracle Vector Search, 3072-wide embeddings | pgvector table `public.vector_store`, 1536-wide embeddings |
-| Auto-configuration | pgvector store switched off | Oracle store switched off |
-| Startup SQL | none | `sql/postgres-bootstrap.sql`: the `vector`, `hstore` and `uuid-ossp` extensions plus a `clob` domain over `text` |
+| JDBC URL, user, password | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | `ORACLE_URL`, `ORACLE_USERNAME`, `ORACLE_PASSWORD` |
+| Driver and dialect | `org.postgresql.Driver`, `PostgreSQLDialect` | `oracle.jdbc.OracleDriver`, `OracleDialect` |
+| Vector store | pgvector table `public.vector_store`, 1536-wide embeddings | Oracle Vector Search, 3072-wide embeddings |
+| Auto-configuration | Oracle store switched off | pgvector store switched off |
+| Startup SQL | `sql/postgres-bootstrap.sql`: the `vector`, `hstore` and `uuid-ossp` extensions plus a `clob` domain over `text` | none |
 
 Two details worth knowing before you switch:
 
@@ -282,6 +316,12 @@ Build with the Maven wrapper:
 ```powershell
 .\mvnw.cmd clean package
 ```
+
+The build runs one test, `contextLoads`, which boots the whole application context —
+so it needs a reachable database and the variables above exported in the same shell.
+It now expects `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`; to build against Oracle,
+export `SPRING_PROFILES_ACTIVE=oracle` and the `ORACLE_*` trio first, or skip the
+test with `.\mvnw.cmd clean package -DskipTests`.
 
 Run from IntelliJ IDEA or with Maven:
 
@@ -448,7 +488,7 @@ application's agent login flow.
 
 ## Knowledge ingestion
 
-Knowledge is tenant-specific and is embedded into the Oracle vector store:
+Knowledge is tenant-specific and is embedded into the active vector store:
 
 ```http
 POST http://localhost:8000/api/v1/knowledge
@@ -481,9 +521,9 @@ Content-Type: multipart/form-data
 Use a multipart field named `file`. Optional form fields are `name`, `category`,
 and `version`. Files must use a `.pdf`, `.md`, or `.markdown` extension.
 
-The current Oracle vector configuration uses top-k retrieval without a
-similarity threshold. Oracle requires vector normalization before threshold
-filtering can be enabled.
+Retrieval uses top-k with no similarity threshold on either store. Threshold
+filtering on Oracle additionally requires vector normalization, which the schema
+does not do, so it stays off; pgvector would accept one.
 
 ## Postman testing
 
@@ -514,11 +554,14 @@ X-API-Key: your configured demo API key
 Remove any empty or inherited `Authorization` header. Customer chat does not
 use the agent JWT.
 
-### HTTP 403 with an Oracle exception in the log
+### Database errors after a 403
 
-If the log contains `ORA-01400`, the request passed authentication and failed
-while writing to Oracle. Check the database error and compare the live schema
-with `src/main/resources/sql/schema.sql`.
+A 403 that turns into a database exception means authentication passed and the
+write failed. On PostgreSQL the usual cause is a column that Hibernate did not
+create — check the `support_*` tables against the entities. On Oracle the error is
+an `ORA-01400` or similar; compare the live schema with
+`src/main/resources/sql/schema.sql`. Either way, read the message after the SQL
+exception: it names the table and column.
 
 ### HTTP 429 (rate limited)
 
@@ -533,10 +576,11 @@ existing-schema migration in [ORACLE_SQL_SETUP.md](ORACLE_SQL_SETUP.md).
 
 ### Vector similarity threshold error
 
-If Oracle reports that similarity threshold filtering requires normalized
-vectors, remove the threshold or enable
-`spring.ai.vectorstore.oracle.forced-normalization=true` and plan for vector
-re-ingestion if the vector schema changes.
+On Oracle, similarity threshold filtering requires normalized vectors. Remove the
+threshold or enable
+`spring.ai.vectorstore.oracle.forced-normalization=true`, and plan for vector
+re-ingestion if the vector schema changes. The pgvector store needs nothing here:
+retrieval runs on the HNSW cosine index with top-k and no threshold.
 
 ### Port 8000 is already in use
 

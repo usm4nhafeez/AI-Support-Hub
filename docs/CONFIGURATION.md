@@ -65,6 +65,10 @@ Configures Hibernate to generate SQL appropriate for Oracle Database.
 
 ## 3. Oracle Database
 
+These keys live in `application.properties`. They apply when
+`SPRING_PROFILES_ACTIVE=oracle` selects Oracle; the default `pgvector` profile
+overrides all four with the PostgreSQL values in section 12.
+
 ```properties
 spring.datasource.url=${ORACLE_URL}
 spring.datasource.username=${ORACLE_USERNAME}
@@ -172,11 +176,16 @@ RETRIEVAL_DOCUMENT
 
 indicates that the generated embeddings are intended for document retrieval.
 
-These embeddings are later stored in the Oracle vector store and compared against query embeddings during semantic search.
+These embeddings are later stored in the active vector store — Oracle Vector Search
+or pgvector, depending on the profile — and compared against query embeddings during
+semantic search.
 
 ---
 
 ## 6. Oracle Vector Store
+
+These keys are the Oracle store, active with `SPRING_PROFILES_ACTIVE=oracle`. The
+default pgvector profile replaces them with the values in section 12.
 
 ```properties
 spring.ai.vectorstore.oracle.initialize-schema=true
@@ -337,16 +346,16 @@ JSON error instead.
 
 ## 12. PostgreSQL and pgvector Profile
 
-Oracle is the default and needs no profile. Starting the application with
-`SPRING_PROFILES_ACTIVE=pgvector` loads `application-pgvector.properties`, which
-overrides the database, dialect and vector store and switches the Oracle
-auto-configuration off:
+PostgreSQL + pgvector is the default. `application.properties` sets
+`spring.profiles.active=pgvector`, so a start needs no profile variable at all and
+loads `application-pgvector.properties` automatically. That file overrides the
+database, dialect and vector store, and switches the Oracle auto-configuration off:
 
 ```properties
 spring.datasource.url=${DB_URL}
 spring.datasource.username=${DB_USERNAME}
 spring.datasource.password=${DB_PASSWORD}
-spring.datasource.driver-class-name=${DB_DRIVER:org.postgresql.Driver}
+spring.datasource.driver-class-name=org.postgresql.Driver
 
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
 
@@ -369,9 +378,15 @@ spring.ai.vectorstore.pgvector.remove-existing-vector-store-table=false
 
 Both stores stay in the build so one jar and one Docker image serve either
 database. `application.properties` excludes `PgVectorStoreAutoConfiguration` and
-this profile excludes `OracleVectorStoreAutoConfiguration`, which keeps exactly
-one `VectorStore` bean — the code injects the interface and does not care which
-one it receives.
+this profile replaces that value with `OracleVectorStoreAutoConfiguration` — list
+properties are replaced, never merged — which keeps exactly one `VectorStore` bean.
+The code injects the interface and does not care which one it receives.
+
+To run on Oracle instead, set the environment variable `SPRING_PROFILES_ACTIVE=oracle`
+(or `Active profiles: oracle` in an IntelliJ run configuration). An environment
+variable outranks the line in `application.properties`, and there is no
+`application-oracle.properties`, so no extra file loads and the Oracle settings in
+`application.properties` apply exactly as they always did.
 
 `spring.sql.init` runs `sql/postgres-bootstrap.sql` on every start: the `vector`,
 `hstore` and `uuid-ossp` extensions, plus a domain named `clob` over `text`. The
@@ -381,16 +396,16 @@ that name instead of editing shared entity annotations. Statements in that scrip
 end in `;;` because the guarded `DO` block contains ordinary semicolons.
 
 pgvector indexes at most 2000 dimensions with HNSW, so this profile asks Gemini
-for 1536-wide vectors while the Oracle default keeps 3072. Vectors written to one
+for 1536-wide vectors while the Oracle profile keeps 3072. Vectors written to one
 store cannot be read from the other: knowledge has to be trained again after
 switching databases, and each database keeps its own copy of everything.
 
-The four names are generic on purpose: `DB_URL` is an ordinary PostgreSQL JDBC URL,
+The three names are generic on purpose: `DB_URL` is an ordinary PostgreSQL JDBC URL,
 so a local pgvector container, Supabase and Neon all use the same profile with no
 edits. Keep them upper case — environment variables are case-sensitive on Linux, so
-`DB_Driver` resolves on Windows and silently fails on a deploy target. `DB_DRIVER`
-is the only one you can omit; it defaults to `org.postgresql.Driver`, since this
-profile's dialect, bootstrap script and vector store are already Postgres-specific.
+`DB_Driver` resolves on Windows and silently fails on a deploy target. The driver is
+hard-coded rather than read from an environment variable, because this profile's
+dialect, bootstrap script and vector store are already Postgres-specific.
 
 For Supabase, take the **Session** pooler string (port 5432) rather than the
 Transaction pooler (6543): HikariCP keeps real connections and transaction pooling
@@ -407,15 +422,15 @@ Before running the application, configure these required environment variables:
 
 ```text
 GEMINI_API_KEY
-ORACLE_URL
-ORACLE_USERNAME
-ORACLE_PASSWORD
+DB_URL
+DB_USERNAME
+DB_PASSWORD
 JWT_SECRET
 ```
 
-On the `pgvector` profile, `ORACLE_URL`, `ORACLE_USERNAME` and `ORACLE_PASSWORD`
-are replaced by `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`, and
-`SPRING_PROFILES_ACTIVE=pgvector` is required. See section 12.
+On the Oracle profile, `DB_URL`, `DB_USERNAME` and `DB_PASSWORD` are replaced by
+`ORACLE_URL`, `ORACLE_USERNAME` and `ORACLE_PASSWORD`, and
+`SPRING_PROFILES_ACTIVE=oracle` is required. See section 12.
 
 `JWT_SECRET` must contain at least 32 random bytes. Generate one with:
 
@@ -440,8 +455,8 @@ Example PowerShell configuration:
 
 ```powershell
 $env:GEMINI_API_KEY="your-gemini-api-key"
-$env:ORACLE_USERNAME="your-oracle-username"
-$env:ORACLE_PASSWORD="your-oracle-password"
+$env:DB_USERNAME="your-database-username"
+$env:DB_PASSWORD="your-database-password"
 ```
 
 For production deployments, configure these values through the deployment platform's secret/environment-variable management instead of storing them in source code.
@@ -458,11 +473,11 @@ Environment Variables
         |       +--> Gemini Chat Model
         |       +--> Gemini Embedding Model
         |
-        +--> Oracle Credentials
+        +--> Database Credentials
                 |
                 +--> JPA / Hibernate
                 +--> JDBC
-                +--> Oracle Vector Store
+                +--> Vector Store (pgvector by default, Oracle with SPRING_PROFILES_ACTIVE=oracle)
 ```
 
 This configuration keeps application behavior in Spring Boot properties while keeping credentials outside the source code.
