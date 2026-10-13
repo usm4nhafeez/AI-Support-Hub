@@ -343,10 +343,10 @@ overrides the database, dialect and vector store and switches the Oracle
 auto-configuration off:
 
 ```properties
-spring.datasource.url=${SUPABASE_DB_URL}
+spring.datasource.url=${DB_URL}
 spring.datasource.username=${DB_USERNAME}
 spring.datasource.password=${DB_PASSWORD}
-spring.datasource.driver-class-name=org.postgresql.Driver
+spring.datasource.driver-class-name=${DB_DRIVER:org.postgresql.Driver}
 
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
 
@@ -385,14 +385,19 @@ for 1536-wide vectors while the Oracle default keeps 3072. Vectors written to on
 store cannot be read from the other: knowledge has to be trained again after
 switching databases, and each database keeps its own copy of everything.
 
-`SUPABASE_DB_URL` is an ordinary PostgreSQL JDBC URL despite the name — a local
-pgvector container works with it unchanged. For Supabase itself, take the
-**Session** pooler string (port 5432) rather than the Transaction pooler (6543):
-HikariCP keeps real connections and transaction pooling throws away the session
-state the driver relies on. Append `?sslmode=require`, because Supabase refuses
-plain connections. With `initialize-schema=true`, Spring AI runs
-`CREATE EXTENSION IF NOT EXISTS vector` on start; if the connection role cannot do
-that, enable pgvector once in the Supabase dashboard under Database → Extensions.
+The four names are generic on purpose: `DB_URL` is an ordinary PostgreSQL JDBC URL,
+so a local pgvector container, Supabase and Neon all use the same profile with no
+edits. Keep them upper case — environment variables are case-sensitive on Linux, so
+`DB_Driver` resolves on Windows and silently fails on a deploy target. `DB_DRIVER`
+is the only one you can omit; it defaults to `org.postgresql.Driver`, since this
+profile's dialect, bootstrap script and vector store are already Postgres-specific.
+
+For Supabase, take the **Session** pooler string (port 5432) rather than the
+Transaction pooler (6543): HikariCP keeps real connections and transaction pooling
+throws away the session state the driver relies on. Append `?sslmode=require`,
+because Supabase refuses plain connections. With `initialize-schema=true`, Spring AI
+runs `CREATE EXTENSION IF NOT EXISTS vector` on start; if the connection role cannot
+do that, enable pgvector once in the Supabase dashboard under Database → Extensions.
 
 ---
 
@@ -409,7 +414,7 @@ JWT_SECRET
 ```
 
 On the `pgvector` profile, `ORACLE_URL`, `ORACLE_USERNAME` and `ORACLE_PASSWORD`
-are replaced by `SUPABASE_DB_URL`, `DB_USERNAME` and `DB_PASSWORD`, and
+are replaced by `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`, and
 `SPRING_PROFILES_ACTIVE=pgvector` is required. See section 12.
 
 `JWT_SECRET` must contain at least 32 random bytes. Generate one with:

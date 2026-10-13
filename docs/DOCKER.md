@@ -155,7 +155,7 @@ docker builder prune                                   # free the build cache (i
 
 The same image can use PostgreSQL instead of Oracle. Oracle stays the default; the
 `pgvector` profile swaps the driver, the dialect and the vector store, and it reads
-`SUPABASE_DB_URL` / `DB_USERNAME` / `DB_PASSWORD` instead of the three `ORACLE_*`
+`DB_URL` / `DB_USERNAME` / `DB_PASSWORD` instead of the three `ORACLE_*`
 variables. See the README section *Choosing your database: Oracle or PostgreSQL + pgvector*
 for the property-by-property detail.
 
@@ -169,7 +169,7 @@ Then run the app with the profile switched on. `host.docker.internal` is what a 
 reach a port published by Docker on your Windows machine — here, Postgres on 5433:
 
 ```powershell
-docker run --rm -d --name ai-support-hub -p 8001:8000 --env-file .env.docker -e SPRING_PROFILES_ACTIVE=pgvector -e SUPABASE_DB_URL="jdbc:postgresql://host.docker.internal:5433/ash" -e DB_USERNAME=postgres -e DB_PASSWORD=change-me ai-support-hub
+docker run --rm -d --name ai-support-hub -p 8001:8000 --env-file .env.docker -e SPRING_PROFILES_ACTIVE=pgvector -e DB_URL="jdbc:postgresql://host.docker.internal:5433/ash" -e DB_USERNAME=postgres -e DB_PASSWORD=change-me ai-support-hub
 ```
 
 `-e` wins over `--env-file` for the same key, so those flags are enough; you do not need a separate
@@ -181,7 +181,7 @@ The database does not have to be a container. Pointed at a hosted database, the 
 machine:
 
 ```powershell
-docker run --rm -d --name ai-support-hub -p 8001:8000 --env-file .env -e SPRING_PROFILES_ACTIVE=pgvector -e SUPABASE_DB_URL="jdbc:postgresql://aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require" -e DB_USERNAME=postgres -e DB_PASSWORD=your-database-password ai-support-hub
+docker run --rm -d --name ai-support-hub -p 8001:8000 --env-file .env -e SPRING_PROFILES_ACTIVE=pgvector -e DB_URL="jdbc:postgresql://aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require" -e DB_USERNAME=postgres -e DB_PASSWORD=your-database-password ai-support-hub
 ```
 
 Pass the real `.env` there rather than `.env.docker`: that second file exists only to rewrite the

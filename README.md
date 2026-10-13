@@ -85,7 +85,7 @@ JWT_SECRET=<required random secret, at least 32 bytes>
 
 The database URL has no built-in default: it comes from the environment so one
 build works on any machine. On the `pgvector` profile the three `ORACLE_*`
-variables are replaced by `SUPABASE_DB_URL`, `DB_USERNAME` and `DB_PASSWORD`,
+variables are replaced by `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`,
 and `ORACLE_URL` is not read at all.
 
 Optional environment variables and their defaults:
@@ -173,7 +173,7 @@ Maven or a jar from a terminal:
 
 ```powershell
 $env:SPRING_PROFILES_ACTIVE = "pgvector"
-$env:SUPABASE_DB_URL = "jdbc:postgresql://aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require"
+$env:DB_URL = "jdbc:postgresql://aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require"
 $env:DB_USERNAME = "postgres"
 $env:DB_PASSWORD = "your-database-password"
 .\mvnw.cmd spring-boot:run
@@ -193,7 +193,7 @@ docker run --rm -p 8001:8000 --env-file .env.pgvector ai-support-hub:0.0.1
 
 | Concern | Default (Oracle) | `pgvector` profile |
 | --- | --- | --- |
-| JDBC URL, user, password | `ORACLE_URL`, `ORACLE_USERNAME`, `ORACLE_PASSWORD` | `SUPABASE_DB_URL`, `DB_USERNAME`, `DB_PASSWORD` |
+| JDBC URL, user, password | `ORACLE_URL`, `ORACLE_USERNAME`, `ORACLE_PASSWORD` | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` |
 | Driver and dialect | `oracle.jdbc.OracleDriver`, `OracleDialect` | `org.postgresql.Driver`, `PostgreSQLDialect` |
 | Vector store | Oracle Vector Search, 3072-wide embeddings | pgvector table `public.vector_store`, 1536-wide embeddings |
 | Auto-configuration | pgvector store switched off | Oracle store switched off |
@@ -226,7 +226,7 @@ Port 5433 keeps it clear of any PostgreSQL already on 5432, and the named volume
 keeps the data across container restarts. The application then reads:
 
 ```text
-SUPABASE_DB_URL=jdbc:postgresql://localhost:5433/ash
+DB_URL=jdbc:postgresql://localhost:5433/ash
 DB_USERNAME=postgres
 DB_PASSWORD=your-postgres-password
 ```
@@ -253,7 +253,7 @@ in the dashboard open Project Settings -> Database and copy the **Session**
 connection string. Build the URL as:
 
 ```text
-SUPABASE_DB_URL=jdbc:postgresql://<aws-host>.pooler.supabase.com:5432/postgres?sslmode=require
+DB_URL=jdbc:postgresql://<aws-host>.pooler.supabase.com:5432/postgres?sslmode=require
 ```
 
 Three things to get right:
