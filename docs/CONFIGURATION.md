@@ -66,7 +66,7 @@ Configures Hibernate to generate SQL appropriate for Oracle Database.
 ## 3. Oracle Database
 
 ```properties
-spring.datasource.url=${ORACLE_URL:jdbc:oracle:thin:@//localhost:1521/FREEPDB1}
+spring.datasource.url=${ORACLE_URL}
 spring.datasource.username=${ORACLE_USERNAME}
 spring.datasource.password=${ORACLE_PASSWORD}
 spring.datasource.driver-class-name=oracle.jdbc.OracleDriver
@@ -74,10 +74,16 @@ spring.datasource.driver-class-name=oracle.jdbc.OracleDriver
 
 ### Database URL
 
-By default the application connects to the Oracle `FREEPDB1` pluggable database
-running on this machine. Set `ORACLE_URL` to point somewhere else — a remote
-database, or your own machine from inside a Docker container, where `localhost`
-means the container and not the host:
+`ORACLE_URL` has no default, so it must be set — typically to the Oracle
+`FREEPDB1` pluggable database on this machine:
+
+```text
+ORACLE_URL=jdbc:oracle:thin:@//localhost:1521/FREEPDB1
+```
+
+Point it somewhere else for a remote database, or for your own machine from
+inside a Docker container, where `localhost` means the container and not the
+host:
 
 ```text
 ORACLE_URL=jdbc:oracle:thin:@//host.docker.internal:1521/FREEPDB1
@@ -329,16 +335,82 @@ JSON error instead.
 
 ---
 
+## 12. PostgreSQL and pgvector Profile
+
+Oracle is the default and needs no profile. Starting the application with
+`SPRING_PROFILES_ACTIVE=pgvector` loads `application-pgvector.properties`, which
+overrides the database, dialect and vector store and switches the Oracle
+auto-configuration off:
+
+```properties
+spring.datasource.url=${SUPABASE_DB_URL}
+spring.datasource.username=${DB_USERNAME}
+spring.datasource.password=${DB_PASSWORD}
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+
+spring.sql.init.mode=always
+spring.sql.init.schema-locations=classpath:sql/postgres-bootstrap.sql
+spring.sql.init.separator=;;
+
+spring.autoconfigure.exclude=org.springframework.ai.vectorstore.oracle.autoconfigure.OracleVectorStoreAutoConfiguration
+
+spring.ai.google.genai.embedding.text.dimensions=1536
+
+spring.ai.vectorstore.pgvector.initialize-schema=true
+spring.ai.vectorstore.pgvector.dimensions=1536
+spring.ai.vectorstore.pgvector.distance-type=cosine-distance
+spring.ai.vectorstore.pgvector.index-type=hnsw
+spring.ai.vectorstore.pgvector.schema-name=public
+spring.ai.vectorstore.pgvector.table-name=vector_store
+spring.ai.vectorstore.pgvector.remove-existing-vector-store-table=false
+```
+
+Both stores stay in the build so one jar and one Docker image serve either
+database. `application.properties` excludes `PgVectorStoreAutoConfiguration` and
+this profile excludes `OracleVectorStoreAutoConfiguration`, which keeps exactly
+one `VectorStore` bean — the code injects the interface and does not care which
+one it receives.
+
+`spring.sql.init` runs `sql/postgres-bootstrap.sql` on every start: the `vector`,
+`hstore` and `uuid-ossp` extensions, plus a domain named `clob` over `text`. The
+entities declare `columnDefinition = "CLOB"`, raw DDL that is sent to whichever
+database is configured, and PostgreSQL has no `CLOB` type. The domain answers
+that name instead of editing shared entity annotations. Statements in that script
+end in `;;` because the guarded `DO` block contains ordinary semicolons.
+
+pgvector indexes at most 2000 dimensions with HNSW, so this profile asks Gemini
+for 1536-wide vectors while the Oracle default keeps 3072. Vectors written to one
+store cannot be read from the other: knowledge has to be trained again after
+switching databases, and each database keeps its own copy of everything.
+
+`SUPABASE_DB_URL` is an ordinary PostgreSQL JDBC URL despite the name — a local
+pgvector container works with it unchanged. For Supabase itself, take the
+**Session** pooler string (port 5432) rather than the Transaction pooler (6543):
+HikariCP keeps real connections and transaction pooling throws away the session
+state the driver relies on. Append `?sslmode=require`, because Supabase refuses
+plain connections. With `initialize-schema=true`, Spring AI runs
+`CREATE EXTENSION IF NOT EXISTS vector` on start; if the connection role cannot do
+that, enable pgvector once in the Supabase dashboard under Database → Extensions.
+
+---
+
 ## Environment Variables
 
 Before running the application, configure these required environment variables:
 
 ```text
 GEMINI_API_KEY
+ORACLE_URL
 ORACLE_USERNAME
 ORACLE_PASSWORD
 JWT_SECRET
 ```
+
+On the `pgvector` profile, `ORACLE_URL`, `ORACLE_USERNAME` and `ORACLE_PASSWORD`
+are replaced by `SUPABASE_DB_URL`, `DB_USERNAME` and `DB_PASSWORD`, and
+`SPRING_PROFILES_ACTIVE=pgvector` is required. See section 12.
 
 `JWT_SECRET` must contain at least 32 random bytes. Generate one with:
 
@@ -351,7 +423,6 @@ The following demo variables are optional. `DEMO_API_KEY` and
 skipped with a warning rather than seeded with placeholder secrets.
 
 ```text
-ORACLE_URL               (default jdbc:oracle:thin:@//localhost:1521/FREEPDB1)
 JWT_EXPIRATION_MS        (default 3600000)
 DEMO_SEED_ENABLED        (default true; false disables demo seeding)
 DEMO_CLIENT_KEY          (default demo-client)

@@ -48,7 +48,7 @@ Security Filters
 Application Services
         |
         +--> Oracle relational data
-        +--> Oracle Vector Search
+        +--> Oracle Vector Search   (or PostgreSQL + pgvector, see below)
         +--> Google Gemini
 ```
 
@@ -63,6 +63,11 @@ include Spring AI or connect directly to Oracle.
 - An Oracle application user such as `AIUSER`
 - Google Gemini API key
 
+PostgreSQL is an alternative to Oracle for everything above. Install the
+`vector` extension instead, activate the `pgvector` profile, and no Oracle
+database is needed. Oracle stays the default and nothing about it changes; see
+[Choosing your database](#choosing-your-database-oracle-or-postgresql--pgvector).
+
 ## Configuration
 
 Sensitive values are loaded from environment variables. Do not commit real
@@ -72,10 +77,16 @@ Required environment variables:
 
 ```text
 GEMINI_API_KEY=<required Gemini API key>
+ORACLE_URL=<required JDBC URL, e.g. jdbc:oracle:thin:@//localhost:1521/FREEPDB1>
 ORACLE_USERNAME=<required Oracle username>
 ORACLE_PASSWORD=<required Oracle password>
 JWT_SECRET=<required random secret, at least 32 bytes>
 ```
+
+The database URL has no built-in default: it comes from the environment so one
+build works on any machine. On the `pgvector` profile the three `ORACLE_*`
+variables are replaced by `SUPABASE_DB_URL`, `DB_USERNAME` and `DB_PASSWORD`,
+and `ORACLE_URL` is not read at all.
 
 Optional environment variables and their defaults:
 
@@ -142,6 +153,127 @@ production.
 
 The application maps Java boolean values to Oracle numeric boolean values
 (`0`/`1`) and maps `Message.role` to the existing `SENDER_TYPE` column.
+
+## Choosing your database: Oracle or PostgreSQL + pgvector
+
+Oracle is the default and stays fully supported: run the application exactly as
+before and it uses `ORACLE_URL`, the Oracle dialect and Oracle Vector Search. No
+Oracle setting moved into a profile, and nothing about that path changes unless
+you ask for the `pgvector` profile.
+
+The profile is switched on, never mixed in:
+
+```text
+SPRING_PROFILES_ACTIVE=pgvector
+```
+
+IntelliJ IDEA: Run -> Edit Configurations -> *ai hub* -> Active profiles: `pgvector`.
+
+Maven or a jar from a terminal:
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE = "pgvector"
+$env:SUPABASE_DB_URL = "jdbc:postgresql://aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require"
+$env:DB_USERNAME = "postgres"
+$env:DB_PASSWORD = "your-database-password"
+.\mvnw.cmd spring-boot:run
+```
+
+```bash
+SPRING_PROFILES_ACTIVE=pgvector java -jar target/ai-support-hub-0.0.1-SNAPSHOT.jar
+```
+
+Docker, reusing the same image:
+
+```text
+docker run --rm -p 8001:8000 --env-file .env.pgvector ai-support-hub:0.0.1
+```
+
+### What the profile changes
+
+| Concern | Default (Oracle) | `pgvector` profile |
+| --- | --- | --- |
+| JDBC URL, user, password | `ORACLE_URL`, `ORACLE_USERNAME`, `ORACLE_PASSWORD` | `SUPABASE_DB_URL`, `DB_USERNAME`, `DB_PASSWORD` |
+| Driver and dialect | `oracle.jdbc.OracleDriver`, `OracleDialect` | `org.postgresql.Driver`, `PostgreSQLDialect` |
+| Vector store | Oracle Vector Search, 3072-wide embeddings | pgvector table `public.vector_store`, 1536-wide embeddings |
+| Auto-configuration | pgvector store switched off | Oracle store switched off |
+| Startup SQL | none | `sql/postgres-bootstrap.sql`: the `vector`, `hstore` and `uuid-ossp` extensions plus a `clob` domain over `text` |
+
+Two details worth knowing before you switch:
+
+**Vectors do not transfer.** The two stores index different widths, so knowledge
+documents must be trained again against whichever database a project points at.
+Relational rows do not transfer either; a fresh Postgres database starts empty
+and demo seeding and the Clients screen create what you need.
+
+**The long-text columns need the `clob` domain.** Entities declare
+`columnDefinition = "CLOB"`, which is raw DDL that Hibernate sends to whichever
+database it is on. PostgreSQL has no `CLOB` type, so the bootstrap script
+defines a domain of that name over `text`. That keeps the Oracle mapping
+completely untouched instead of editing shared entities, and it runs before
+Hibernate creates the tables.
+
+### A local PostgreSQL with pgvector
+
+The quickest way to get a database to try, using the Docker setup from
+[docs/DOCKER.md](docs/DOCKER.md):
+
+```powershell
+docker run -d --name ash-pgvector -e POSTGRES_PASSWORD=your-postgres-password -e POSTGRES_DB=ash -v ash-pg-data:/var/lib/postgresql/data -p 5433:5432 pgvector/pgvector:pg17
+```
+
+Port 5433 keeps it clear of any PostgreSQL already on 5432, and the named volume
+keeps the data across container restarts. The application then reads:
+
+```text
+SUPABASE_DB_URL=jdbc:postgresql://localhost:5433/ash
+DB_USERNAME=postgres
+DB_PASSWORD=your-postgres-password
+```
+
+`POSTGRES_PASSWORD` above belongs to the container image; `DB_PASSWORD` is the
+name the application reads. They hold the same value.
+
+The quickest way to check you got the store you asked for:
+
+```powershell
+docker exec ash-pgvector psql -U postgres -d ash -c "\d vector_store"
+```
+
+The `embedding` column reads `vector(1536)` and the index is
+`hnsw (embedding vector_cosine_ops)`. Delete the container with
+`docker rm -f ash-pgvector` when you are done; the volume keeps the data if you
+want to start it again later.
+
+### Supabase (hosted pgvector, no card)
+
+This is the profile's main reason to exist: the database no longer has to run on
+your machine, so the app can be deployed somewhere free. Create a project, then
+in the dashboard open Project Settings -> Database and copy the **Session**
+connection string. Build the URL as:
+
+```text
+SUPABASE_DB_URL=jdbc:postgresql://<aws-host>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+Three things to get right:
+
+Use the **Session** pooler (port 5432), not the Transaction pooler (6543). A
+Spring Boot app holds a small pool of real connections through HikariCP, and
+transaction pooling discards session state between them. Keep `sslmode=require`:
+Supabase refuses plain connections. Hibernate's `ddl-auto=update` will create all
+twelve `support_*` tables plus `vector_store` on first boot, which is fine for a
+scratch project and a poor idea for a production one.
+
+`initialize-schema=true` makes Spring AI run `CREATE EXTENSION IF NOT EXISTS
+vector` itself. If the connection role is not allowed to do that, enable pgvector
+once in the dashboard under Database -> Extensions, and the bootstrap script and
+the store both become no-ops on subsequent boots.
+
+Free tiers on Supabase, Neon and similar hosts need no card, which is what makes
+this profile the difference between "runs on my laptop" and "runs somewhere
+public". The trade is that a free project sleeps when idle, so the first request
+after a quiet period waits for the database to wake.
 
 ## Build and run
 

@@ -110,6 +110,12 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-vector-store-oracle</artifactId>
         </dependency>
+        <!-- Optional PostgreSQL/pgvector knowledge store. Selected with the
+             pgvector profile; Oracle stays the default (see application-pgvector.properties). -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-vector-store-advisor</artifactId>
@@ -125,6 +131,12 @@
         <dependency>
             <groupId>com.oracle.database.jdbc</groupId>
             <artifactId>ojdbc17</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <!-- PostgreSQL driver for the pgvector profile; version comes from Spring Boot -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
 

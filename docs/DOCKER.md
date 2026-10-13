@@ -151,6 +151,43 @@ docker system df                                       # how much disk images an
 docker builder prune                                   # free the build cache (images stay)
 ```
 
+## Running the container against PostgreSQL + pgvector
+
+The same image can use PostgreSQL instead of Oracle. Oracle stays the default; the
+`pgvector` profile swaps the driver, the dialect and the vector store, and it reads
+`SUPABASE_DB_URL` / `DB_USERNAME` / `DB_PASSWORD` instead of the three `ORACLE_*`
+variables. See the README section *Choosing your database: Oracle or PostgreSQL + pgvector*
+for the property-by-property detail.
+
+Start a database container first (data survives app restarts because it has a named volume):
+
+```powershell
+docker run -d --name ash-pgvector -e POSTGRES_PASSWORD=change-me -e POSTGRES_DB=ash -v ash-pg-data:/var/lib/postgresql/data -p 5433:5432 pgvector/pgvector:pg17
+```
+
+Then run the app with the profile switched on. `host.docker.internal` is what a container uses to
+reach a port published by Docker on your Windows machine — here, Postgres on 5433:
+
+```powershell
+docker run --rm -d --name ai-support-hub -p 8001:8000 --env-file .env.docker -e SPRING_PROFILES_ACTIVE=pgvector -e SUPABASE_DB_URL="jdbc:postgresql://host.docker.internal:5433/ash" -e DB_USERNAME=postgres -e DB_PASSWORD=change-me ai-support-hub
+```
+
+`-e` wins over `--env-file` for the same key, so those flags are enough; you do not need a separate
+env file for the Postgres variables. If the URL says `localhost` you get `Connection to localhost:5432
+refused` — the container is reaching its own loopback, not your host.
+
+The database does not have to be a container. Pointed at a hosted database, the same image needs no
+`host.docker.internal` at all, and the container no longer depends on anything running on your
+machine:
+
+```powershell
+docker run --rm -d --name ai-support-hub -p 8001:8000 --env-file .env -e SPRING_PROFILES_ACTIVE=pgvector -e SUPABASE_DB_URL="jdbc:postgresql://aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require" -e DB_USERNAME=postgres -e DB_PASSWORD=your-database-password ai-support-hub
+```
+
+Pass the real `.env` there rather than `.env.docker`: that second file exists only to rewrite the
+Oracle host, and the pgvector profile never reads `ORACLE_URL`. Quotes matter — the URL contains `?`
+and `&`, and PowerShell would otherwise split it into extra arguments.
+
 ## If it does not come up
 
 | Message | What happened |
