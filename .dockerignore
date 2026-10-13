@@ -1,4 +1,51 @@
-target
-.idea
-.git
+# Everything here is excluded from the build context — the set of files Docker
+# uploads to the daemon before it reads the Dockerfile. Two reasons to keep it
+# tight: the build starts faster, and nothing unwanted can be COPYed by accident.
+
+# --- Secrets. Never bake an .env into an image; the file survives in every
+# --- layer and anyone with the image can read it back out.
+.env
+.env.*
+*.pem
+*.p12
+*.jks
+
+# --- Build output. The image compiles the project itself in stage 1, so a local
+# --- target/ is not just useless here, it would be stale.
+target/
+
+# --- IDE, editor and agent scratch directories
+.idea/
+.vscode/
+.settings/
+.qoder/
+.vault/
 *.iml
+.classpath
+.project
+
+# --- Files that only ever matter on your machine
+mvnw
+mvnw.cmd
+.mvn/
+*.log
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# --- Docs, screenshots and demo assets: no running container needs them
+docs/
+vibe_images/
+README.md
+TEST.md
+HELP.md
+ORACLE_SQL_SETUP.md
+AGENTS.md
+LICENSE
+.gitattributes
+.gitignore
+
+# --- Git history (the classic way an accidental secret leaks into an image)
+.git/
+
+# NOTE: pom.xml and src/ are deliberately *not* ignored — stage 1 builds from them.

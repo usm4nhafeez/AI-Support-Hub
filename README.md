@@ -121,6 +121,10 @@ troubleshooting, see [ORACLE_SQL_SETUP.md](ORACLE_SQL_SETUP.md).
 For a property-by-property configuration reference, see
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
+To run the same application as a Docker container instead of from your IDE, see
+[docs/DOCKER.md](docs/DOCKER.md). A container sees its own `localhost`, so it needs its own
+`ORACLE_URL` pointing at `host.docker.internal`.
+
 ## Database setup
 
 Run the Oracle setup guide as follows:
@@ -418,6 +422,7 @@ Stop the confirmed stale Java process or set another value for `server.port`.
 - [docs/API_INTEGRATION.md](docs/API_INTEGRATION.md) - Embedding the bot in another project (keys, chat, knowledge, errors, limits)
 - [ORACLE_SQL_SETUP.md](ORACLE_SQL_SETUP.md) - Oracle account, schema, and migration guide
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - Spring Boot configuration reference
+- [docs/DOCKER.md](docs/DOCKER.md) - Build, run, stop and re-run the project as a Docker container
 - [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) - Dependency-by-dependency reference
 - [docs/flow.md](docs/flow.md) - Application flow and security filters
 - [docs/AI_Support_Hub_Entity.md](docs/AI_Support_Hub_Entity.md) - Entity overview
