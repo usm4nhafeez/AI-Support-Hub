@@ -29,7 +29,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/", "/index.html", "/favicon.ico", "/styles.css", "/app.js", "/static/**", "/assets/**").permitAll()
-                .requestMatchers("/actuator/health", "/actuator/info", "/api/v1/agent/auth/login").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info", "/api/v1/agent/auth/login").permitAll()
                 .requestMatchers("/api/v1/support/**", "/api/v1/knowledge/**").hasRole("CLIENT")
                 .requestMatchers("/api/v1/agent/**").hasRole("AGENT")
                 .requestMatchers("/api/v1/clients/**").hasRole("AGENT")

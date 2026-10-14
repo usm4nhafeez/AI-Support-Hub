@@ -35,13 +35,14 @@ COPY --from=build --chown=spring:spring /build/target/ai-support-hub-0.0.1-SNAPS
 
 USER spring
 
-# server.port in application.properties is 8000; the host this runs on is free to
-# override it through PORT (Render, Koyeb and Railway all assign their own).
+# Local runs default to port 8000. Deployment platforms can override PORT with
+# the port assigned to the service.
 EXPOSE 8000
+ENV PORT=8000
 
-# A container gets a memory limit from the host; sizing the heap as a percentage
-# of it beats a fixed -Xmx, which is either wasteful or an OutOfMemory kill.
+# Leave memory outside the Java heap for Spring, the JDBC driver, and the
+# container runtime. This is important on small deployment plans.
 # Override at run time with:  docker run -e JAVA_OPTS="..." ...
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=50.0 -XX:InitialRAMPercentage=15.0"
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar ${PORT:+--server.port=$PORT}"]
