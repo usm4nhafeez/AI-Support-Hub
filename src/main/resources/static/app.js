@@ -18,6 +18,11 @@ let pendingCreds = null; // keys generated for the not-yet-registered client
 
 const $ = (id) => document.getElementById(id);
 
+/* Motion preferences are read live, not once: the agent may flip the OS
+   setting mid-shift and the console should follow on the next interaction. */
+const reduceMotion = () =>
+  window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 /* ------------------------------------------------------------------ theme
    Three curated palettes. Values stay in localStorage under ash.theme, and the
    WebGL hub recolours itself from the tokens the new theme defines. */
@@ -40,7 +45,15 @@ function applyTheme(theme) {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", themeTokens().bg || "#0E1218");
   Object.values(hub).forEach((scene) => scene && scene.setTheme());
+  /* Interpolate surfaces on a deliberate switch, but never on the first paint
+     (the initial theme must land instantly, not fade up from the default). */
+  if (applyTheme._first) { applyTheme._first = false; return; }
+  const root = document.documentElement;
+  root.classList.add("theme-anim");
+  clearTimeout(applyTheme._t);
+  applyTheme._t = setTimeout(() => root.classList.remove("theme-anim"), 420);
 }
+applyTheme._first = true;
 
 function setTheme(theme) {
   if (!THEMES.includes(theme)) return;
@@ -75,12 +88,15 @@ function esc(s) {
   return d.innerHTML;
 }
 
+/* Toast uses the `hidden` attribute (not a class) so the CSS can run an exit
+   transition through allow-discrete before the element leaves the layer. */
 function toast(msg, kind = "info") {
   const t = $("toast");
   t.textContent = msg;
   t.className = `toast ${kind}`;
+  t.hidden = false;
   clearTimeout(toast._timer);
-  toast._timer = setTimeout(() => t.classList.add("hidden"), 3500);
+  toast._timer = setTimeout(() => { t.hidden = true; }, 3500);
 }
 
 async function parseError(res) {
@@ -110,6 +126,10 @@ async function copyText(text, btn) {
   if (btn) {
     const old = btn.textContent;
     btn.textContent = "Copied";
+    /* Restart the confirm pop even on back-to-back copies: drop the class,
+       force a style flush, re-add it. */
+    btn.classList.remove("copied");
+    void btn.offsetWidth;
     btn.classList.add("copied");
     setTimeout(() => { btn.textContent = old; btn.classList.remove("copied"); }, 1500);
   }
@@ -249,6 +269,10 @@ $("login-form").addEventListener("submit", async (e) => {
   } catch (err) {
     errBox.textContent = err.message;
     errBox.classList.remove("hidden");
+    /* One nudge to make the rejection felt without a second read of the text. */
+    errBox.classList.remove("shake");
+    void errBox.offsetWidth;
+    errBox.classList.add("shake");
   } finally {
     btn.disabled = false;
   }
@@ -283,8 +307,14 @@ function viewFromHash() {
 
 function applyView(view) {
   document.querySelectorAll(".nav-item").forEach((n) => n.classList.toggle("active", n.dataset.view === view));
-  document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
-  $(`view-${view}`).classList.remove("hidden");
+  document.querySelectorAll(".view").forEach((v) => { v.classList.add("hidden"); v.classList.remove("enter"); });
+  const el = $(`view-${view}`);
+  el.classList.remove("hidden");
+  /* Tag the arrived view so its blocks cascade in (CSS gates on .view.enter);
+   the tag drops after the sequence so later re-renders stay motionless. */
+  requestAnimationFrame(() => el.classList.add("enter"));
+  clearTimeout(applyView._t);
+  applyView._t = setTimeout(() => el.classList.remove("enter"), 900);
   $("view-title").textContent = VIEW_TITLES[view];
   $("view-eyebrow").textContent = VIEW_EYEBROWS[view] || "";
   if (viewFromHash() !== view) history.replaceState(null, "", `#${view}`);
@@ -314,14 +344,26 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 /* -------------------------------------------------------- conversations */
+/* Skeleton keeps the queue's shape on screen while the fetch is in flight:
+   five placeholder rows in the real column grid, then the data fills them. */
+const CONV_SKL_WIDTHS = ["58%", "18%", "26%", "22%", "44%", "30%"];
+function convSkeletonRows() {
+  const cell = (w) => `<td><span class="skl" style="width:${w}"></span></td>`;
+  return Array.from({ length: 5 }, () =>
+    `<tr class="skl-row" aria-hidden="true">${CONV_SKL_WIDTHS.map(cell).join("")}</tr>`).join("");
+}
+
 async function loadConversations() {
-  $("conv-loading").classList.remove("hidden");
   $("conv-empty").classList.add("hidden");
-  $("conv-table").classList.add("hidden");
+  $("conv-loading").classList.add("hidden");
+  $("conv-table").classList.remove("hidden");
+  $("conv-body").innerHTML = convSkeletonRows();
   try {
     state.conversations = await agentFetch("/api/v1/agent/conversations");
     renderConversations();
   } catch (err) {
+    $("conv-body").innerHTML = "";
+    $("conv-table").classList.add("hidden");
     toast(err.message, "error");
   } finally {
     $("conv-loading").classList.add("hidden");
@@ -350,7 +392,7 @@ function renderConversations() {
       <td>${badge((c.status || "").replace(/_/g, " "), STATUS_BADGE[c.status])}</td>
       <td>${badge((c.priority || "—").replace(/_/g, " "), PRIORITY_BADGE[c.priority])}</td>
       <td>${agentCell(c)}</td>
-      <td class="muted small">${esc(fmtDate(c.updatedAt || c.createdAt))}</td>
+      <td class="cl-td-meta">${esc(fmtDate(c.updatedAt || c.createdAt))}</td>
     </tr>`).join("");
   bindConvActions();
 }
@@ -421,8 +463,12 @@ function addBubble(text, cls) {
   const b = document.createElement("div");
   b.className = `chat-msg ${cls}`;
   b.textContent = text;
-  $("chat-transcript").appendChild(b);
-  $("chat-transcript").scrollTop = $("chat-transcript").scrollHeight;
+  const t = $("chat-transcript");
+  t.appendChild(b);
+  /* The transcript follows new content with a short glide, unless the agent
+     has asked the OS for reduced motion - then it just lands. */
+  if (t.scrollTo) t.scrollTo({ top: t.scrollHeight, behavior: reduceMotion() ? "auto" : "smooth" });
+  else t.scrollTop = t.scrollHeight;
   return b;
 }
 
@@ -442,7 +488,11 @@ $("chat-form").addEventListener("submit", async (e) => {
   btn.disabled = true;
   addBubble(message, "chat-msg-customer");
   input.value = "";
-  const thinking = addBubble("AI is thinking…", "chat-msg-ai");
+  /* The wait state is a bubble with three dots; the reply replaces the dots
+     in the SAME element, so the eye never has to re-find the answer. */
+  const thinking = addBubble("", "chat-msg-ai thinking");
+  thinking.setAttribute("aria-busy", "true");
+  thinking.innerHTML = '<span class="t-dot"></span><span class="t-dot"></span><span class="t-dot"></span>';
   try {
     const data = await clientFetch("/api/v1/support/chat", {
       method: "POST",
@@ -453,17 +503,24 @@ $("chat-form").addEventListener("submit", async (e) => {
         message,
       }),
     });
+    thinking.classList.remove("thinking");
+    thinking.removeAttribute("aria-busy");
     thinking.textContent = data.response;
     const meta = document.createElement("span");
     meta.className = "chat-meta";
     meta.textContent = `conversation ${data.conversationId} · ${data.status}`;
     thinking.appendChild(meta);
     state.conversationId = data.conversationId;
-    if (hub.mini) hub.mini.emit(5);   // a dispatch pulse on the sidebar core
-    $("chat-status").textContent = (data.status || "").replace(/_/g, " ");
-    $("chat-status").className = `badge ${STATUS_BADGE[data.status] || "badge-gray"}`;
+    if (hub.mini) hub.mini.emit(6);   // the dispatch the mini core was built to show
+    const st = $("chat-status");
+    st.textContent = (data.status || "").replace(/_/g, " ");
+    st.className = `badge ${STATUS_BADGE[data.status] || "badge-gray"}`;
+    /* The status badge is the queue-side truth: pop it when its value changes. */
+    void st.offsetWidth;
+    st.classList.add("badge-pop");
   } catch (err) {
     thinking.className = "chat-msg chat-msg-error";
+    thinking.removeAttribute("aria-busy");
     thinking.textContent = err.message;
   } finally {
     btn.disabled = false;
@@ -556,8 +613,8 @@ async function loadKnDocs() {
     const docs = await agentFetch(`/api/v1/clients/${id}/knowledge`);
     box.innerHTML = docs.length
       ? `<span class="kn-docs-label">Trained (${docs.length})</span>` +
-        docs.slice(0, 12).map((d) =>
-          `<span class="kn-chip" title="${esc([d.category, d.version && ("v" + d.version)].filter(Boolean).join(" · "))}">${esc(d.name)}</span>`
+        docs.slice(0, 12).map((d, i) =>
+          `<span class="kn-chip" style="--i:${i}" title="${esc([d.category, d.version && ("v" + d.version)].filter(Boolean).join(" · "))}">${esc(d.name)}</span>`
         ).join("") +
         (docs.length > 12 ? `<span class="kn-chip more">+${docs.length - 12} more</span>` : "")
       : '<span class="kn-docs-label">Nothing trained for this project yet.</span>';
