@@ -335,62 +335,138 @@
       <!-- API Guide view -->
       <section id="view-guide" class="view hidden">
         <div class="guide">
+
           <div class="card">
             <h3>1 · Get your project's keys</h3>
-            <p class="muted small">Every application that embeds the support bot is registered as a client (project) with its own credentials. The API key is shown only once, at onboarding.</p>
+            <p class="muted small">Every application that embeds the support bot is registered as a client with its own credentials.</p>
             <ol class="guide-steps">
-              <li>Open <strong>Clients</strong> and enter the project name — the hub generates a unique client key and a strong API key.</li>
-              <li>Copy both values from the credential ticket and store them in your application's environment (for example <code>SUPPORT_CLIENT_KEY</code> and <code>SUPPORT_API_KEY</code>).</li>
+              <li>Open <strong>Clients</strong> and create a project.</li>
+              <li>Copy the generated client key and API key.</li>
+              <li>Store both credentials securely in your backend environment.</li>
             </ol>
-            <p class="muted small">Lost the API key? It can't be recovered — but <strong>Clients → Rotate key</strong> issues a new one for the same project, so nothing needs re-training. The old key stops working the moment you rotate.</p>
+            <p class="muted small">Lost the API key? Use Clients → Rotate key to generate a replacement. The old key stops working after rotation.</p>
           </div>
 
           <div class="card">
-            <h3>2 · Call the chat API</h3>
-            <p class="muted small">Send two headers with every request from your application. Never expose the API key in browser code — proxy through your backend.</p>
+            <h3>2 · API base URL</h3>
+            <p class="muted small">Automatically detected from the current dashboard address. All endpoints below use this base URL.</p>
             <div class="code-block">
-              <pre><code id="guide-curl">curl -X POST http://localhost:8000/api/v1/support/chat \
-  -H "Content-Type: application/json" \
-  -H "X-Client-Key: &lt;your-client-key&gt;" \
-  -H "X-API-Key: &lt;your-api-key&gt;" \
-  -d '{"customerId":"user-123","message":"What is the return policy?"}'</code></pre>
-              <button type="button" class="btn btn-ghost btn-small" id="guide-copy-curl">Copy with my credentials</button>
+              <pre><code id="guide-base-url">Detecting base URL...</code></pre>
+              <button type="button" class="btn btn-ghost btn-small" id="guide-copy-base-url">Copy base URL</button>
             </div>
-            <div class="form-row guide-fields">
-              <div><span class="gen-label">customerId</span><p class="muted small">Your user's id. A conversation is created on first message.</p></div>
-              <div><span class="gen-label">conversationId</span><p class="muted small">Optional. Send the id from the reply to continue the same conversation.</p></div>
-              <div><span class="gen-label">message</span><p class="muted small">The customer's question.</p></div>
-            </div>
-            <p class="muted small">Reply: <code>{"conversationId":"…","status":"AI_HANDLING","response":"…"}</code> — keep <code>conversationId</code> for follow-ups.</p>
+            <p class="muted small">If the API runs on another host or port, configure its URL in the JavaScript configuration instead.</p>
           </div>
 
           <div class="card">
-            <h3>3 · Train your project's knowledge</h3>
-            <p class="muted small">The bot only answers from knowledge trained for your project. Upload it the same way — with your project's keys.</p>
+            <h3>3 · Start a customer conversation</h3>
+            <p class="muted small">Send both client authentication headers. Never expose the API key in browser-side production code.</p>
             <div class="code-block">
-              <pre><code id="guide-curl-kn">curl -X POST http://localhost:8000/api/v1/knowledge \
-  -H "Content-Type: application/json" \
-  -H "X-Client-Key: &lt;your-client-key&gt;" \
-  -H "X-API-Key: &lt;your-api-key&gt;" \
-  -d '{"name":"return-policy","category":"policies","version":"1.0","content":"Customers may return eligible items within 30 days."}'</code></pre>
+              <pre><code id="guide-curl"></code></pre>
+              <button type="button" class="btn btn-ghost btn-small" id="guide-copy-curl">Copy chat request</button>
             </div>
-            <p class="muted small">Files: <code>POST /api/v1/knowledge/file</code> as <code>multipart/form-data</code> with a <code>file</code> field — PDF and Markdown only. Agents can also train any project from the <strong>Knowledge</strong> screen.</p>
+            <p class="muted small">Required body fields: <code>customerId</code> and <code>message</code>. The server creates a conversation when no conversation ID is supplied.</p>
+            <p class="muted small">Example response:</p>
+            <pre><code>{
+  "conversationId": "generated-uuid",
+  "status": "AI_HANDLING",
+  "response": "Customers may return eligible books within 30 days..."
+}</code></pre>
           </div>
 
           <div class="card">
-            <h3>4 · Limits and errors</h3>
+            <h3>4 · Continue the same conversation</h3>
+            <p class="muted small">Reuse the conversation ID returned by the first message. Send another message to continue the conversation history.</p>
+            <div class="code-block">
+              <pre><code id="guide-continue-chat"></code></pre>
+              <button type="button" class="btn btn-ghost btn-small" id="guide-copy-continue">Copy follow-up request</button>
+            </div>
+            <p class="muted small">The conversation ID must belong to the authenticated client. Otherwise, the service returns a conversation-not-found error.</p>
+          </div>
+
+          <div class="card">
+            <h3>5 · Ingest knowledge using client credentials</h3>
+            <p class="muted small">Add project-specific text knowledge for the support bot.</p>
+            <div class="code-block">
+              <pre><code id="guide-knowledge"></code></pre>
+              <button type="button" class="btn btn-ghost btn-small" id="guide-copy-knowledge">Copy knowledge request</button>
+            </div>
+            <p class="muted small">The request stores knowledge metadata and creates vector embeddings in the Oracle vector store.</p>
+          </div>
+
+          <div class="card">
+            <h3>6 · Upload a knowledge file</h3>
+            <p class="muted small">Upload a PDF or Markdown file using multipart form data. Do not manually set the Content-Type header when using curl's <code>-F</code> option.</p>
+            <div class="code-block">
+              <pre><code id="guide-knowledge-file"></code></pre>
+              <button type="button" class="btn btn-ghost btn-small" id="guide-copy-knowledge-file">Copy upload request</button>
+            </div>
+            <p class="muted small">Required field: <code>file</code>. Optional fields: <code>name</code>, <code>category</code>, and <code>version</code>. Supported extensions: PDF, MD, and Markdown.</p>
+          </div>
+
+          <div class="card">
+            <h3>7 · List conversations as an agent</h3>
+            <p class="muted small">Requires an agent JWT obtained through your existing agent login endpoint.</p>
+            <div class="code-block">
+              <pre><code id="guide-agent-conversations"></code></pre>
+              <button type="button" class="btn btn-ghost btn-small" id="guide-copy-agent-conversations">Copy request</button>
+            </div>
+            <p class="muted small">The authenticated agent's tenant is determined from the signed JWT.</p>
+          </div>
+
+          <div class="card">
+            <h3>8 · List clients as an agent</h3>
+            <div class="code-block">
+              <pre><code id="guide-clients"></code></pre>
+              <button type="button" class="btn btn-ghost btn-small" id="guide-copy-clients">Copy request</button>
+            </div>
+            <p class="muted small">Returns client records, including their IDs, names, keys, active status, and timestamps. API secrets and hashes are not returned. Save a client ID to manage its knowledge.</p>
+          </div>
+
+          <div class="card">
+            <h3>9 · List knowledge for a client</h3>
+            <p class="muted small">Requires an agent JWT and a valid client ID.</p>
+            <div class="code-block">
+              <pre><code id="guide-client-knowledge"></code></pre>
+              <button type="button" class="btn btn-ghost btn-small" id="guide-copy-client-knowledge">Copy request</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>10 · Ingest knowledge as an agent</h3>
+            <p class="muted small">Train a selected project using an agent JWT instead of client API credentials.</p>
+            <div class="code-block">
+              <pre><code id="guide-agent-ingest"></code></pre>
+              <button type="button" class="btn btn-ghost btn-small" id="guide-copy-agent-ingest">Copy request</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>11 · Upload knowledge as an agent</h3>
+            <div class="code-block">
+              <pre><code id="guide-agent-upload"></code></pre>
+              <button type="button" class="btn btn-ghost btn-small" id="guide-copy-agent-upload">Copy request</button>
+            </div>
+            <p class="muted small">Use multipart form data with the required <code>file</code> field and optional <code>name</code>, <code>category</code>, and <code>version</code> fields.</p>
+          </div>
+
+          <div class="card">
+            <h3>12 · Limits and errors</h3>
             <table class="table guide-table">
-              <thead><tr><th>Status</th><th>Meaning</th><th>What to do</th></tr></thead>
+              <thead>
+              <tr><th>Status</th><th>Meaning</th><th>What to do</th></tr>
+              </thead>
               <tbody>
-                <tr><td><span class="badge badge-red">401</span></td><td>Wrong agent username/password (login)</td><td>Check credentials; repeated failures are rate-limited.</td></tr>
-                <tr><td><span class="badge badge-red">403</span></td><td>Missing or wrong <code>X-Client-Key</code>/<code>X-API-Key</code></td><td>Send both headers, and don't mix them with an <code>Authorization</code> header.</td></tr>
-                <tr><td><span class="badge badge-amber">409</span></td><td>Client key collision not auto-resolvable (rare)</td><td>Onboarding normally issues a unique variant of a duplicate key; press Generate again.</td></tr>
-                <tr><td><span class="badge badge-amber">429</span></td><td>Rate limit (10 logins/min per IP · 30 chats/min per client)</td><td>Retry after the <code>Retry-After</code> seconds.</td></tr>
-                <tr><td><span class="badge badge-blue">502</span></td><td>AI provider temporarily unavailable</td><td>Retry; check <code>GEMINI_API_KEY</code> if it persists.</td></tr>
+              <tr><td><span class="badge badge-red">400</span></td><td>Invalid request or unsupported file</td><td>Check the request body and file extension.</td></tr>
+              <tr><td><span class="badge badge-red">401</span></td><td>Missing or invalid agent authentication</td><td>Check agent credentials and JWT.</td></tr>
+              <tr><td><span class="badge badge-red">403</span></td><td>Invalid client credentials or access denied</td><td>Verify the required authentication headers.</td></tr>
+              <tr><td><span class="badge badge-amber">409</span></td><td>Client key collision</td><td>Generate a new client key.</td></tr>
+              <tr><td><span class="badge badge-amber">429</span></td><td>Rate limit exceeded</td><td>Retry after the Retry-After interval.</td></tr>
+              <tr><td><span class="badge badge-blue">502</span></td><td>AI provider unavailable</td><td>Retry and check Gemini configuration.</td></tr>
               </tbody>
             </table>
-            <p class="muted small">Full reference: <code>docs/API_INTEGRATION.md</code> in the repository.</p>
+            <p class="muted small">Full reference: <code>docs/API_INTEGRATION.md</code>.</p>
           </div>
+
         </div>
       </section>
 

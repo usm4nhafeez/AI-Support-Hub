@@ -1189,3 +1189,91 @@ state.token ? showApp() : showLogin();
     console.info("Routing core unavailable:", err.message);
   }
 })();
+
+
+(function initApiGuide() {
+  const baseUrl = (window.API_BASE_URL || window.location.origin).replace(/\/+$/, "");
+
+  const endpoints = {
+    "guide-base-url": baseUrl,
+    "guide-curl": `curl -X POST "${baseUrl}/api/v1/support/chat" \\
+  -H "Content-Type: application/json" \\
+  -H "X-Client-Key: <your-client-key>" \\
+  -H "X-API-Key: <your-api-key>" \\
+  -d '{"customerId":"user-123","message":"What is the return policy?"}'`,
+    "guide-continue-chat": `curl -X POST "${baseUrl}/api/v1/support/chat" \\
+  -H "Content-Type: application/json" \\
+  -H "X-Client-Key: <your-client-key>" \\
+  -H "X-API-Key: <your-api-key>" \\
+  -d '{"customerId":"user-123","conversationId":"<conversation-id>","message":"Can I get help from a human?"}'`,
+    "guide-knowledge": `curl -X POST "${baseUrl}/api/v1/knowledge" \\
+  -H "Content-Type: application/json" \\
+  -H "X-Client-Key: <your-client-key>" \\
+  -H "X-API-Key: <your-api-key>" \\
+  -d '{"name":"Return Policy","category":"policies","version":"1.0","content":"Customers may return eligible books within 30 days of delivery."}'`,
+    "guide-knowledge-file": `curl -X POST "${baseUrl}/api/v1/knowledge/file" \\
+  -H "X-Client-Key: <your-client-key>" \\
+  -H "X-API-Key: <your-api-key>" \\
+  -F "file=@knowledge.pdf" \\
+  -F "name=Return Policy" \\
+  -F "category=policies" \\
+  -F "version=1.0"`,
+    "guide-agent-conversations": `curl "${baseUrl}/api/v1/agent/conversations" \\
+  -H "Authorization: Bearer <agent-jwt>"`,
+    "guide-clients": `curl "${baseUrl}/api/v1/clients" \\
+  -H "Authorization: Bearer <agent-jwt>"`,
+    "guide-client-knowledge": `curl "${baseUrl}/api/v1/clients/<client-id>/knowledge" \\
+  -H "Authorization: Bearer <agent-jwt>"`,
+    "guide-agent-ingest": `curl -X POST "${baseUrl}/api/v1/clients/<client-id>/knowledge" \\
+  -H "Authorization: Bearer <agent-jwt>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"name":"Shipping FAQ","category":"faq","version":"1.0","content":"Shipping takes 2-4 business days."}'`,
+    "guide-agent-upload": `curl -X POST "${baseUrl}/api/v1/clients/<client-id>/knowledge/file" \\
+  -H "Authorization: Bearer <agent-jwt>" \\
+  -F "file=@knowledge.pdf" \\
+  -F "name=Shipping FAQ" \\
+  -F "category=faq" \\
+  -F "version=1.0"`
+  };
+
+  Object.entries(endpoints).forEach(([id, value]) => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
+  });
+
+  const copyButtons = {
+    "guide-copy-base-url": "guide-base-url",
+    "guide-copy-curl": "guide-curl",
+    "guide-copy-continue": "guide-continue-chat",
+    "guide-copy-knowledge": "guide-knowledge",
+    "guide-copy-knowledge-file": "guide-knowledge-file",
+    "guide-copy-agent-conversations": "guide-agent-conversations",
+    "guide-copy-clients": "guide-clients",
+    "guide-copy-client-knowledge": "guide-client-knowledge",
+    "guide-copy-agent-ingest": "guide-agent-ingest",
+    "guide-copy-agent-upload": "guide-agent-upload"
+  };
+
+  Object.entries(copyButtons).forEach(([buttonId, elementId]) => {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+
+    button.addEventListener("click", async () => {
+      const element = document.getElementById(elementId);
+      if (!element) return;
+
+      try {
+        await navigator.clipboard.writeText(element.textContent);
+        const originalText = button.textContent;
+        button.textContent = "Copied!";
+        setTimeout(() => {
+          button.textContent = originalText;
+        }, 1500);
+      } catch (error) {
+        console.error("Could not copy API example:", error);
+        window.prompt("Copy this text:", element.textContent);
+      }
+    });
+  });
+})();
+
